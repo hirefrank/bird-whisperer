@@ -1,7 +1,6 @@
-import fs from 'fs';
-import path from 'path';
 import yaml from 'js-yaml';
 import { z } from 'zod';
+import configYaml from '../config.yaml';
 
 const FollowSchema = z.object({
   username: z.string(),
@@ -26,10 +25,8 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type User = Config['users'][number];
 export type Follow = User['follows'][number];
 
-export function loadConfig(configPath?: string): Config {
-  const filePath = configPath || path.resolve('config.yaml');
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const parsed = yaml.load(raw) as Record<string, unknown>;
+export function loadConfig(): Config {
+  const parsed = yaml.load(configYaml) as Record<string, unknown>;
   if (parsed.prompt === null) {
     parsed.prompt = undefined;
   }

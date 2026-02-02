@@ -12,7 +12,7 @@ import { loadConfig, type Config } from './config';
 
 function createTwitterClient(authToken: string, ct0: string) {
   const { TwitterClient } = require('@steipete/bird');
-  return new TwitterClient({ cookies: { auth_token: authToken, ct0 } });
+  return new TwitterClient({ cookies: { authToken, ct0 } });
 }
 
 function createLlmClient(model: string, apiKey: string, customPrompt: string | undefined) {
@@ -55,26 +55,30 @@ Keep it concise.`;
 function createResendClient(apiKey: string) {
   const { Resend } = require('resend');
 
-  const resend = new Resend({ apiKey });
+  const resend = new Resend(apiKey);
 
   return {
     async send(to: string, subject: string, html: string): Promise<void> {
-      await resend.emails.send({
+      const { error } = await resend.emails.send({
         from: 'Bird Whisperer <noreply@notifications.hirefrank.com>',
         to,
         subject,
         html,
       });
+      if (error) {
+        throw new Error(`Resend error: ${error.message}`);
+      }
     },
   };
 }
 
-async function fetchUserTweets(client: any, username: string, limit: number, maxId?: string) {
-  const options: any = { count: limit };
-  if (maxId) {
-    options.maxId = maxId;
+async function fetchUserTweets(client: any, username: string, limit: number) {
+  const lookup = await client.getUserIdByUsername(username);
+  if (!lookup.success || !lookup.userId) {
+    console.log(`[fetchUserTweets] Failed to resolve @${username}: ${lookup.error}`);
+    return [];
   }
-  const result = await client.getUserTweets(username, options);
+  const result = await client.getUserTweets(lookup.userId, limit);
   return result?.tweets || [];
 }
 
@@ -99,25 +103,29 @@ async function runDigest(env: Env) {
     const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number }[] = [];
 
     for (const follow of user.follows) {
-      const maxIdKey = `maxId:${user.email}:${follow.username}`;
-      const lastMaxId = (await env.BIRD_WHISPERER.get(maxIdKey)) ?? undefined;
+      const lastSeenKey = `lastSeen:${user.email}:${follow.username}`;
+      const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
 
       console.log(`Fetching tweets for @${follow.username}...`);
-      const tweets = await fetchUserTweets(client, follow.username, 50, lastMaxId);
+      let tweets = await fetchUserTweets(client, follow.username, 20);
+
+      if (lastSeenId) {
+        tweets = tweets.filter((t: any) => BigInt(t.id) > BigInt(lastSeenId));
+      }
 
       if (tweets.length === 0) {
         console.log(`No new tweets for @${follow.username}`);
         continue;
       }
 
+      // Store the newest tweet ID for next run
+      const newestId = tweets.reduce((max: string, t: any) =>
+        BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
+      await env.BIRD_WHISPERER.put(lastSeenKey, newestId);
+
       console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`);
       const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username);
       handleSummaries.push({ username: follow.username, summary, links, tweetCount });
-
-      const newMaxId = tweets[tweets.length - 1]?.id;
-      if (newMaxId) {
-        await env.BIRD_WHISPERER.put(maxIdKey, newMaxId);
-      }
     }
 
     if (handleSummaries.length === 0) {

@@ -1,8 +1,12 @@
 name = "bird-whisperer"
 compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
 main = "src/index.ts"
 
-compatibility_flags = ["nodejs_compat"]
+[[rules]]
+type = "Text"
+globs = ["**/*.yaml"]
+fallthrough = true
 
 [[kv_namespaces]]
 binding = "BIRD_WHISPERER"
