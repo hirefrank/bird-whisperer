@@ -15,3 +15,6 @@ crons = ["0 13 * * *"]  # Daily at 1pm UTC (8am NYC/EST)
 [observability.logs]
 enabled = false
 invocation_logs = true
+
+[vars]
+ENABLE_MANUAL_TRIGGER = false

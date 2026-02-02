@@ -153,19 +153,17 @@ Edit crontab (`0 */2 * * *`):
 To manually trigger a digest (useful if cron failed):
 
 ```bash
-# Enable manual trigger (optional, off by default for security)
-wrangler secret put ENABLE_MANUAL_TRIGGER --name bird-whisperer
-# Set value to: true
+# Enable manual trigger (off by default for security)
+pnpm run trigger:enable
 
-# Then trigger via curl
-curl https://bird-whisperer.hirefrank.workers.dev/trigger
+# Trigger manually
+pnpm run trigger
+
+# Disable when done
+pnpm run trigger:disable
 ```
 
-**Security:** The endpoint is only active when `ENABLE_MANUAL_TRIGGER=true` is set. Disable after use:
-
-```bash
-wrangler secret delete ENABLE_MANUAL_TRIGGER --name bird-whisperer
-```
+**Security:** The `/trigger` endpoint is only active when `ENABLE_MANUAL_TRIGGER=true`. The TOML defaults to `false` so every deploy resets it.
 
 ## Email Format
 
