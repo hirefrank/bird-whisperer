@@ -54,8 +54,11 @@ cp config.example.yaml config.yaml
 # 3. Edit config.yaml with your users and follows
 # Edit wrangler.toml with your KV namespace ID (run: pnpm run kv:create)
 
-# 4. Set required secrets
-wrangler secret put AUTH_TOKEN CT0 GEMINI_API_KEY RESEND_API_KEY
+# 4. Set required secrets (one at a time, wrangler prompts for each value)
+wrangler secret put AUTH_TOKEN
+wrangler secret put CT0
+wrangler secret put GEMINI_API_KEY
+wrangler secret put RESEND_API_KEY
 
 # 5. Deploy worker
 pnpm run deploy
@@ -103,9 +106,13 @@ Copy `wrangler.example.toml` to `wrangler.toml` and edit:
 ```toml
 name = "bird-whisperer"
 compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
 main = "src/index.ts"
 
-compatibility_flags = ["nodejs_compat"]
+[[rules]]
+type = "Text"
+globs = ["**/*.yaml"]
+fallthrough = true
 
 [[kv_namespaces]]
 binding = "BIRD_WHISPERER"
@@ -113,6 +120,11 @@ id = "YOUR_KV_ID"  # Run: pnpm run kv:create
 
 [triggers]
 crons = ["0 13 * * *"]  # Daily at 1pm UTC (8am NYC/EST)
+
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
 ```
 
 **Never commit `wrangler.toml`** — it contains your KV namespace ID.
@@ -140,8 +152,8 @@ users:
 - **2 API calls to X (Twitter)** - resolve username + fetch tweets
 - 1 API call to Gemini (LLM summarization)
 
-Plus per user:
-- 1 email send via Resend
+Plus per user (each recipient if `email` is a list):
+- 1 email send via Resend per address
 
 **Example:** 5 users × 5 follows = 50 Twitter calls + 25 Gemini calls + 5 emails. With 50 tweets per follow, fetching all tweets can take significant time.
 
@@ -189,7 +201,7 @@ pnpm run trigger
 pnpm run trigger:disable
 ```
 
-**Security:** The `/trigger` endpoint is only active when `ENABLE_MANUAL_TRIGGER=true`. The TOML defaults to `false` so every deploy resets it.
+**Security:** The `/trigger` endpoint is only active when the `ENABLE_MANUAL_TRIGGER` secret is set to `true`. Use `pnpm run trigger:disable` to set it back to `false` when done.
 
 ### Resetting KV State
 
@@ -240,7 +252,7 @@ Each `[N]` in the summary links directly to the corresponding tweet on X.
 1. Worker triggers at 8am NYC (1pm UTC)
 2. For each user, fetches tweets and filters to the last 24 hours
 3. Deduplicates against last seen tweet ID (stored in KV)
-4. Summarizes new tweets via Gemini with the user's context
+4. Summarizes new tweets via Gemini with the user's context (quote tweet content is included inline)
 5. Converts markdown summary to HTML via `marked`
 6. Replaces `[N]` footnote references with links to the original tweets
 7. Sends one consolidated email per user

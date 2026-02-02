@@ -52,7 +52,14 @@ Style rules:
   return {
     async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
       const tweetText = tweets
-        .map((t, i) => `[${i + 1}] ${t.text}`)
+        .map((t, i) => {
+          let line = `[${i + 1}] ${t.text}`
+          if (t.quotedTweet?.text) {
+            const author = t.quotedTweet.author?.username ? `@${t.quotedTweet.author.username}` : 'unknown'
+            line += `\n    ↳ Quoted ${author}: "${t.quotedTweet.text}"`
+          }
+          return line
+        })
         .join('\n\n');
 
       const links = tweets.map((t) => `https://x.com/${twitterUsername}/status/${t.id}`);
