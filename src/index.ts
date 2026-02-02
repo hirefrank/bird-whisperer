@@ -115,18 +115,21 @@ async function runDigest(env: Env) {
   const today = new Date().toISOString().split('T')[0];
 
   for (const user of config.users) {
-    const sentKey = `sent:${today}:${user.email}`;
+    const emails = Array.isArray(user.email) ? user.email : [user.email]
+    const primaryEmail = emails[0]
+
+    const sentKey = `sent:${today}:${primaryEmail}`;
     const alreadySent = await env.BIRD_WHISPERER.get(sentKey);
     if (alreadySent) {
-      console.log(`Already sent digest to ${user.email} today`);
+      console.log(`Already sent digest to ${emails.join(', ')} today`);
       continue;
     }
 
-    console.log(`Processing digest for ${user.email}...`);
+    console.log(`Processing digest for ${emails.join(', ')}...`);
     const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number }[] = [];
 
     for (const follow of user.follows) {
-      const lastSeenKey = `lastSeen:${user.email}:${follow.username}`;
+      const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
       const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
 
       console.log(`Fetching tweets for @${follow.username}...`);
@@ -163,7 +166,7 @@ async function runDigest(env: Env) {
     }
 
     if (handleSummaries.length === 0) {
-      console.log(`No new tweets for any handles, skipping ${user.email}`);
+      console.log(`No new tweets for any handles, skipping ${emails.join(', ')}`);
       continue;
     }
 
@@ -191,10 +194,12 @@ async function runDigest(env: Env) {
     `;
 
     const subject = `🐦 Bird Whisperer Digest — ${dateStr}`;
-    console.log(`Sending digest to ${user.email} (${handleSummaries.length} handles)...`);
-    await email.send(user.email, subject, html);
+    for (const recipient of emails) {
+      console.log(`Sending digest to ${recipient} (${handleSummaries.length} handles)...`);
+      await email.send(recipient, subject, html);
+      console.log(`Digest sent to ${recipient}`);
+    }
     await env.BIRD_WHISPERER.put(sentKey, new Date().toISOString());
-    console.log(`Digest sent to ${user.email}`);
   }
 }
 

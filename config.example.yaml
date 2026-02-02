@@ -2,7 +2,9 @@ cookieSource: chrome
 chromeProfileDir: ~/.config/chromium/Default
 
 users:
-  - email: person@example.com
+  - email:                        # single address or list
+      - person@example.com
+      - another@example.com
     context: "I work at Shopify. I'm interested in AI/ML infrastructure, software trends, and building great products."
     follows:
       - username: tobi

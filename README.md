@@ -73,13 +73,17 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 
 ```yaml
 users:
-  - email: person@example.com
+  - email: person@example.com           # single address
     context: "I work at Shopify. I'm interested in AI/ML infrastructure, e-commerce, and building great products."
     follows:
       - username: tobi
       - username: harleyf
-      - username: vlaurenlee
-      - username: MParakhin
+  - email:                               # or a list of addresses
+      - person@example.com
+      - partner@example.com
+    context: "We're interested in AI..."
+    follows:
+      - username: samaltman
 
 llm:
   provider: google
@@ -115,7 +119,7 @@ crons = ["0 13 * * *"]  # Daily at 1pm UTC (8am NYC/EST)
 
 ### Adding Users and Follows
 
-Edit `config.yaml`:
+Edit `config.yaml`. The `email` field accepts a single address or a list — all recipients share the same digest, context, and follows:
 
 ```yaml
 users:
@@ -124,8 +128,10 @@ users:
     follows:
       - username: tobi
       - username: harleyf
-  - email: me@example.com
-    context: "I'm interested in AI..."
+  - email:
+      - me@example.com
+      - partner@example.com
+    context: "We're interested in AI..."
     follows:
       - username: samaltman
 ```

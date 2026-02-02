@@ -7,7 +7,7 @@ const FollowSchema = z.object({
 });
 
 const UserSchema = z.object({
-  email: z.string().email(),
+  email: z.union([z.string().email(), z.string().email().array()]),
   context: z.string(),
   follows: FollowSchema.array(),
 });
