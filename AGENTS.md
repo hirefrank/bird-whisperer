@@ -118,3 +118,10 @@ scripts/
 - **Cron-triggered**: Worker runs on schedule via `[triggers]` in wrangler.toml
 - **KV-backed**: State persisted in Cloudflare KV (last seen IDs, sent flags)
 - **Lazy loading**: Heavy deps loaded via `require()` inside functions, not at top
+
+### Scaling & Performance
+- **15-minute timeout** for scheduled triggers on Cloudflare Workers
+- Each follow requires: 2 Twitter API calls (resolve + fetch) + 1 Gemini API call
+- Each user requires: 1 email send via Resend
+- **Recommended:** Max ~5 users with ~5 follows each (25 total follows) to stay within timeout
+- Consider queue-based architecture with Durable Objects if scaling beyond this

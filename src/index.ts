@@ -8,7 +8,8 @@ export interface Env {
   ENABLE_MANUAL_TRIGGER?: string;
 }
 
-import { loadConfig, type Config } from './config';
+import { loadConfig, type Config } from './config'
+import { marked } from 'marked'
 
 function createTwitterClient(authToken: string, ct0: string) {
   const { TwitterClient } = require('@steipete/bird');
@@ -20,18 +21,16 @@ function createLlmClient(model: string, apiKey: string, customPrompt: string | u
   const { generateText } = require('ai');
 
   const google = createGoogleGenerativeAI({ apiKey });
-  const prompt = customPrompt || `You are helping someone stay informed about a Twitter user's activity.
+  const prompt = customPrompt || `You are writing a section of a personalized newsletter digest about a Twitter user's recent activity.
 
-Context about the person: {CONTEXT}
+Context about the reader: {CONTEXT}
 
-Here are their recent tweets:
+Here are the user's recent tweets, numbered for reference:
 {TWEETS}
 
-Please summarize in 2-3 sentences:
-1. What is this person talking about?
-2. Any interesting insights or takeaways?
+Write an engaging, conversational summary in 2-3 short paragraphs. Reference specific tweets using [1], [2], etc. notation — these will become clickable links. Highlight what matters most given the reader's context. Be insightful, not just descriptive: connect dots, surface implications, note what's interesting or surprising.
 
-Keep it concise.`;
+Do NOT use bullet points or numbered lists. Write in flowing prose with a newsletter tone — like a knowledgeable friend catching you up.`;
 
   return {
     async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
@@ -73,13 +72,20 @@ function createResendClient(apiKey: string) {
 }
 
 async function fetchUserTweets(client: any, username: string, limit: number) {
-  const lookup = await client.getUserIdByUsername(username);
+  const lookup = await client.getUserIdByUsername(username)
   if (!lookup.success || !lookup.userId) {
-    console.log(`[fetchUserTweets] Failed to resolve @${username}: ${lookup.error}`);
-    return [];
+    console.log(`[fetchUserTweets] Failed to resolve @${username}: ${lookup.error}`)
+    return []
   }
-  const result = await client.getUserTweets(lookup.userId, limit);
-  return result?.tweets || [];
+  const result = await client.getUserTweets(lookup.userId, limit)
+  const tweets = result?.tweets || []
+
+  const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
+  return tweets.filter((t: any) => {
+    if (!t.createdAt) return true
+    const ts = new Date(t.createdAt).getTime()
+    return !isNaN(ts) && ts > twentyFourHoursAgo
+  })
 }
 
 async function runDigest(env: Env) {
@@ -123,9 +129,20 @@ async function runDigest(env: Env) {
         BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
       await env.BIRD_WHISPERER.put(lastSeenKey, newestId);
 
-      console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`);
-      const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username);
-      handleSummaries.push({ username: follow.username, summary, links, tweetCount });
+      console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`)
+      const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username)
+
+      // Convert markdown summary to HTML, then replace [N] references with linked footnotes
+      let summaryHtml = await marked.parse(summary)
+      summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
+        const idx = parseInt(num, 10) - 1
+        if (idx >= 0 && idx < links.length) {
+          return `<a href="${links[idx]}" style="color: #1da1f2; text-decoration: none; font-weight: 600;">[${num}]</a>`
+        }
+        return match
+      })
+
+      handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount })
     }
 
     if (handleSummaries.length === 0) {
@@ -144,11 +161,8 @@ async function runDigest(env: Env) {
             <h2 style="margin: 0 0 10px 0;">
               <a href="https://x.com/${h.username}" style="color: #1da1f2; text-decoration: none;">@${h.username}</a>
             </h2>
-            <p style="line-height: 1.6;">${h.summary}</p>
+            <div style="line-height: 1.6;">${h.summary}</div>
             <p style="color: #666; font-size: 14px;">${h.tweetCount} new tweet${h.tweetCount !== 1 ? 's' : ''}</p>
-            <ul style="margin: 10px 0; padding-left: 20px; color: #666; font-size: 14px;">
-              ${h.links.slice(0, 3).map((link) => `<li><a href="${link}" style="color: #1da1f2;">View tweet</a></li>`).join('')}
-            </ul>
           </div>
         `).join('')}
 

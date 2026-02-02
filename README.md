@@ -126,6 +126,17 @@ users:
       - username: samaltman
 ```
 
+**Scaling Limits:** Cloudflare Workers have a 15-minute timeout for scheduled triggers. Per follow, the worker makes:
+- **2 API calls to X (Twitter)** - resolve username + fetch tweets
+- 1 API call to Gemini (LLM summarization)
+
+Plus per user:
+- 1 email send via Resend
+
+**Example:** 5 users × 5 follows = 50 Twitter calls + 25 Gemini calls + 5 emails. With 50 tweets per follow, fetching all tweets can take significant time.
+
+**Recommended limits:** ~5 users with ~5 follows each (25 follows total) to stay within 15-minute timeout. Scale horizontally by running multiple workers with different configs if needed.
+
 ### Custom Prompt
 
 Edit the `prompt` field in `config.yaml` to customize how summaries are generated.
