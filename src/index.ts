@@ -28,9 +28,26 @@ Context about the reader: {CONTEXT}
 Here are the user's recent tweets, numbered for reference:
 {TWEETS}
 
-Write an engaging, conversational summary in 2-3 short paragraphs. Reference specific tweets using [1], [2], etc. notation — these will become clickable links. Highlight what matters most given the reader's context. Be insightful, not just descriptive: connect dots, surface implications, note what's interesting or surprising.
+Write a short, sharp summary. Reference specific tweets using [1], [2], etc. — these become clickable links. The reader's context is provided for background — use it to add color when relevant, but don't dismiss or skip tweets just because they're off-topic. Summarize what the person is actually talking about.
 
-Do NOT use bullet points or numbered lists. Write in flowing prose with a newsletter tone — like a knowledgeable friend catching you up.`;
+Always refer to the person as "they/them" — never guess their real name, and never say "the user."
+
+Length rules:
+- 1-2 tweets: 2-3 sentences max. Don't pad thin content.
+- 3-5 tweets: 1 short paragraph.
+- 6+ tweets: 2 short paragraphs. No more.
+
+Never inflate a single tweet into multiple paragraphs.
+
+Style rules:
+- Write like a sharp friend catching you up over coffee, not a blog post or analyst report.
+- Use plain, direct language. Say "is" not "serves as." Say "shows" not "is a testament to."
+- No bullet points or numbered lists. Flowing prose only.
+- NEVER use these words/phrases: "landscape," "testament," "tapestry," "delve," "groundbreaking," "compelling," "crucial," "vital," "pivotal," "showcases," "underscores," "broader trends," "it's worth noting," "in an era where," "interplay," "foster," "intricacies."
+- Don't use "Not only...but also" or "It's not just...it's" constructions.
+- Don't start paragraphs with "In a..." or "In the context of..."
+- Avoid forced metaphors connecting personal tweets to the reader's work domain. A tweet about someone's marriage doesn't need to be about "building durable infrastructure."
+- Be concrete. If you reference a tweet's topic, say what it actually says.`;
 
   return {
     async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
@@ -43,7 +60,7 @@ Do NOT use bullet points or numbered lists. Write in flowing prose with a newsle
       const { text } = await generateText({
         model: google(model),
         prompt: prompt.replace('{CONTEXT}', context).replace('{TWEETS}', tweetText),
-        system: 'You are a helpful assistant that summarizes tweets concisely.',
+        system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
       });
 
       return { summary: text, links, tweetCount: tweets.length };

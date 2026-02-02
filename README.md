@@ -14,10 +14,13 @@ sync-cookies.sh ──cookies─────────────►│ Cloud
    │                                    │
 Chrome ──cookies──┘                     ↓
                                       reads config.yaml
+                                      filter tweets to last 24h
                                       dedupe with KV Namespace
                                               ↓
                                         fetch tweets → X
-                                        summarize → Gemini
+                                        summarize → Gemini (markdown)
+                                        convert to HTML (marked)
+                                        add inline footnote links
                                         send email → Resend
 ```
 
@@ -26,7 +29,8 @@ Chrome ──cookies──┘                     ↓
 - Your laptop provides fresh X cookies (required since X uses cookie auth)
 - Cloudflare Worker runs reliably on a schedule (no laptop needed)
 - KV deduplication prevents duplicate emails
-- Only new tweets are fetched and summarized each day
+- Only new tweets from the last 24 hours are fetched and summarized
+- Summaries are rendered as HTML with inline footnote links to original tweets
 
 ## Quick Start
 
@@ -82,8 +86,8 @@ llm:
   model: gemini-3-flash-preview
 
 prompt: |
-  You are helping someone stay informed about a Twitter user's activity.
-  ...
+  You are writing a section of a personalized newsletter digest...
+  # See config.example.yaml for the full default prompt
 ```
 
 **Never commit `config.yaml`** — it contains personal email addresses and context.
@@ -139,7 +143,12 @@ Plus per user:
 
 ### Custom Prompt
 
-Edit the `prompt` field in `config.yaml` to customize how summaries are generated.
+Edit the `prompt` field in `config.yaml` to customize how summaries are generated. The default prompt instructs the LLM to:
+
+- Write in a conversational newsletter tone (not bullet points or dry lists)
+- Scale length proportionally to tweet count (1-2 tweets = 2-3 sentences; 6+ = 2 short paragraphs)
+- Reference specific tweets using `[1]`, `[2]` notation (converted to clickable links in the email)
+- Avoid common AI writing patterns (inflated language, forced metaphors, filler phrases)
 
 ### Changing LLM Model
 
@@ -161,7 +170,7 @@ Edit crontab (`0 */2 * * *`):
 
 ### Manual Trigger
 
-To manually trigger a digest (useful if cron failed):
+To manually trigger a digest (useful for testing or if cron failed):
 
 ```bash
 # Enable trigger endpoint
@@ -176,30 +185,41 @@ pnpm run trigger:disable
 
 **Security:** The `/trigger` endpoint is only active when `ENABLE_MANUAL_TRIGGER=true`. The TOML defaults to `false` so every deploy resets it.
 
+### Resetting KV State
+
+To clear all stored state (last seen tweet IDs and sent flags) and force a fresh digest:
+
+```bash
+pnpm run kv:reset
+```
+
+This reads the KV namespace ID from `wrangler.toml` and deletes all keys from the remote namespace.
+
 ## Email Format
 
-Users receive one consolidated digest email per day:
+Users receive one consolidated HTML digest email per day. Summaries are rendered from markdown with inline footnote links to original tweets:
 
 ```
 🐦 Bird Whisperer Digest
 February 1, 2026
 
 @tobi
-Summary of what tobi tweeted about...
+They've been focused on AI infrastructure this week, sharing thoughts
+on PyTorch's JIT deprecation [1] and a new approach to small MLPs [2].
+The frustration with the framework direction [1] echoes wider concerns
+in the production ML community.
 5 new tweets
-- View tweet
-- View tweet
-- View tweet
 
 @harleyf
-Summary of harleyf's tweets...
-2 new tweets
-- View tweet
-- View tweet
+They shared a personal moment — a couple celebrating 70 years of
+marriage [1].
+1 new tweet
 
 ---
 Powered by Bird Whisperer
 ```
+
+Each `[N]` in the summary links directly to the corresponding tweet on X.
 
 ## How It Works
 
@@ -212,16 +232,20 @@ Powered by Bird Whisperer
 ### Daily Digest
 
 1. Worker triggers at 8am NYC (1pm UTC)
-2. For each user, fetches only new tweets (tracks last seen via KV `maxId`)
-3. Summarizes new tweets via Gemini with the user's context
-4. Sends one consolidated email per user
-5. Stores `maxId` to avoid re-fetching on next run
+2. For each user, fetches tweets and filters to the last 24 hours
+3. Deduplicates against last seen tweet ID (stored in KV)
+4. Summarizes new tweets via Gemini with the user's context
+5. Converts markdown summary to HTML via `marked`
+6. Replaces `[N]` footnote references with links to the original tweets
+7. Sends one consolidated email per user
+8. Stores newest tweet ID to avoid re-fetching on next run
 
 ### Deduplication
 
-- Per-user digest sent once per day (`sent:{date}:{email}`)
-- Per-follow max tweet ID tracked (`maxId:{email}:{username}`)
-- Only new tweets since last run are fetched and summarized
+- **Time-based:** Tweets older than 24 hours are dropped before processing
+- **ID-based:** Per-follow last seen tweet ID tracked (`lastSeen:{email}:{username}`)
+- **Per-user:** Digest sent once per day (`sent:{date}:{email}`)
+- Only tweets passing both filters are summarized
 
 ## Troubleshooting
 
@@ -253,17 +277,23 @@ wrangler tail
 
 ```
 bird-whisperer/
-├── wrangler.example.toml   # Example worker config (copy to wrangler.toml)
-├── wrangler.toml           # Your worker config (NOT committed)
-├── package.json            # Dependencies & scripts
-├── tsconfig.json           # TypeScript config
-├── config.example.yaml     # Example config (copy to config.yaml)
-├── config.yaml             # Your config (NOT committed)
-├── architecture.svg        # Architecture diagram
+├── wrangler.example.toml    # Example worker config (copy to wrangler.toml)
+├── wrangler.toml            # Your worker config (NOT committed)
+├── package.json             # Dependencies & scripts
+├── tsconfig.json            # TypeScript config
+├── config.example.yaml      # Example config (copy to config.yaml)
+├── config.yaml              # Your config (NOT committed)
 ├── src/
-│   └── index.ts            # Worker entry point
+│   ├── index.ts             # Worker entry point, handlers
+│   ├── config.ts            # YAML config loading + Zod validation
+│   ├── twitter.ts           # Twitter API client
+│   ├── email.ts             # SMTP client (nodemailer)
+│   ├── summarize.ts         # LLM client (Google AI)
+│   └── yaml.d.ts            # Type declarations for YAML imports
 ├── scripts/
-│   └── sync-cookies.sh     # Cookie extraction script
+│   ├── sync-cookies.sh      # Cookie extraction + upload to Cloudflare secrets
+│   ├── kv-reset.sh          # Delete all keys from remote KV namespace
+│   └── extract-cookies.mjs  # Extract cookies from Chrome profile
 └── README.md
 ```
 

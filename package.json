@@ -11,7 +11,7 @@
     "trigger:enable": "echo 'true' | wrangler secret put ENABLE_MANUAL_TRIGGER",
     "trigger:disable": "echo 'false' | wrangler secret put ENABLE_MANUAL_TRIGGER",
     "trigger": "curl https://bird-whisperer.hirefrank.workers.dev/trigger",
-    "kv:reset": "wrangler kv key list --namespace-id=b5f4bd3f021f4cc0a7148dd37ab20023 | jq -r '.[].name' | while read key; do wrangler kv key delete --namespace-id=b5f4bd3f021f4cc0a7148dd37ab20023 \"$key\"; done",
+    "kv:reset": "./scripts/kv-reset.sh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

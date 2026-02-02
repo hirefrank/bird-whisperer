@@ -15,6 +15,9 @@ pnpm run deploy
 # KV namespace setup (one-time)
 pnpm run kv:create
 
+# Reset all remote KV state (lastSeen + sent flags)
+pnpm run kv:reset
+
 # Sync Twitter cookies from Chrome
 pnpm run sync-cookies
 
@@ -23,6 +26,19 @@ pnpm run trigger:enable   # Enable /trigger endpoint
 pnpm run trigger:disable  # Disable /trigger endpoint
 pnpm run trigger          # Execute manual trigger
 ```
+
+## Development Environment
+
+**All development is remote** — no local infrastructure is used. The `pnpm run dev` command runs with `--remote` flag, which means:
+- Uses remote Cloudflare Workers runtime (not local Miniflare)
+- Connects to remote KV namespace for state
+- Requires active internet connection
+- Tests against real external APIs (Twitter, Gemini, Resend)
+
+This ensures dev matches production exactly, but means you need:
+- Valid secrets configured in Cloudflare
+- Cookies synced via `pnpm run sync-cookies`
+- Active API keys for Gemini and Resend
 
 ## Code Style Guidelines
 
@@ -103,14 +119,16 @@ pnpm run trigger          # Execute manual trigger
 ### Project Structure
 ```
 src/
-  index.ts        # Worker entry point, handlers
-  config.ts       # YAML config loading + validation
-  twitter.ts      # Twitter API client (CLI-based)
-  email.ts        # SMTP client (nodemailer)
-  summarize.ts    # LLM client (Google AI)
-  yaml.d.ts       # Type declarations for YAML imports
+  index.ts            # Worker entry point, handlers
+  config.ts           # YAML config loading + validation
+  twitter.ts          # Twitter API client (CLI-based)
+  email.ts            # SMTP client (nodemailer)
+  summarize.ts        # LLM client (Google AI)
+  yaml.d.ts           # Type declarations for YAML imports
 scripts/
-  sync-cookies.sh # Cookie extraction + upload
+  sync-cookies.sh     # Cookie extraction + upload to Cloudflare secrets
+  kv-reset.sh         # Delete all keys from remote KV namespace
+  extract-cookies.mjs # Extract cookies from Chrome profile
 ```
 
 ### Key Architectural Patterns
