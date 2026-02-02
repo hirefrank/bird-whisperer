@@ -148,6 +148,25 @@ Edit crontab (`0 */2 * * *`):
 | Every 6 hours | `0 */6 * * *` |
 | Every hour | `0 * * * *` |
 
+### Manual Trigger
+
+To manually trigger a digest (useful if cron failed):
+
+```bash
+# Enable manual trigger (optional, off by default for security)
+wrangler secret put ENABLE_MANUAL_TRIGGER --name bird-whisperer
+# Set value to: true
+
+# Then trigger via curl
+curl https://bird-whisperer.hirefrank.workers.dev/trigger
+```
+
+**Security:** The endpoint is only active when `ENABLE_MANUAL_TRIGGER=true` is set. Disable after use:
+
+```bash
+wrangler secret delete ENABLE_MANUAL_TRIGGER --name bird-whisperer
+```
+
 ## Email Format
 
 Users receive one consolidated digest email per day:

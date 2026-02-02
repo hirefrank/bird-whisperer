@@ -29,5 +29,9 @@ export type Follow = User['follows'][number];
 export function loadConfig(configPath?: string): Config {
   const filePath = configPath || path.resolve('config.yaml');
   const raw = fs.readFileSync(filePath, 'utf-8');
-  return ConfigSchema.parse(yaml.load(raw));
+  const parsed = yaml.load(raw) as Record<string, unknown>;
+  if (parsed.prompt === null) {
+    parsed.prompt = undefined;
+  }
+  return ConfigSchema.parse(parsed);
 }
