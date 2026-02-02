@@ -215,29 +215,25 @@ This reads the KV namespace ID from `wrangler.toml` and deletes all keys from th
 
 ## Email Format
 
-Users receive one consolidated HTML digest email per day. Summaries are rendered from markdown with inline footnote links to original tweets:
+Users receive one consolidated HTML digest email per day. Summaries are rendered from markdown with inline footnote links to original tweets. Each `[N]` links directly to the corresponding tweet on X:
 
-```
-🐦 Bird Whisperer Digest
-February 1, 2026
-
-@tobi
-They've been focused on AI infrastructure this week, sharing thoughts
-on PyTorch's JIT deprecation [1] and a new approach to small MLPs [2].
-The frustration with the framework direction [1] echoes wider concerns
-in the production ML community.
-5 new tweets
-
-@harleyf
-They shared a personal moment — a couple celebrating 70 years of
-marriage [1].
-1 new tweet
-
----
-Powered by Bird Whisperer
-```
-
-Each `[N]` in the summary links directly to the corresponding tweet on X.
+> **Bird Whisperer Digest**
+> February 2, 2026
+>
+> **@tobi**
+> They're tracking global political shifts, sharing footage from a Free Iran march in Toronto [[1]](#) and a report alleging biased war coverage by the CBC [[2]](#). They also highlighted Javier Milei's aggressive economic results in Argentina, noting how his "chainsaw" approach has already slashed inflation and eliminated the budget deficit [[3]](#).
+> 3 new tweets
+>
+> **@harleyf**
+> They shared a photo of a couple married for over 70 years, calling them role models for life and love [[1]](#). It's a brief personal moment away from the usual software and product talk.
+> 1 new tweet
+>
+> **@MParakhin**
+> They prefer the "Sidekick" moniker for AI tools over "agents" [[1]](#) and shared a link [[3]](#) while recommending Auto-Compressing Networks as a reliable standard for small MLPs [[2]](#). They've noticed ChatGPT 5.2's instruction following quietly improving [[4]](#), but they're frustrated by PyTorch deprecating jit tracing [[5]](#). They see this move as a step backward for production stability, comparing it to the rocky transition of TensorFlow 2.0 [[5]](#).
+> 5 new tweets
+>
+> ---
+> *Powered by Bird Whisperer*
 
 ## How It Works
 
