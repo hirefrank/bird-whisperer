@@ -10,7 +10,7 @@ fallthrough = true
 
 [[kv_namespaces]]
 binding = "BIRD_WHISPERER"
-id = "YOUR_KV_ID"
+id = "YOUR_KV_ID"  # Run: pnpm run kv:create
 
 [triggers]
 crons = ["0 13 * * *"]  # Daily at 1pm UTC (8am NYC/EST)

@@ -15,16 +15,28 @@ llm:
   model: gemini-3-flash-preview
 
 prompt: |
-  You are helping someone stay informed about a Twitter user's activity.
+  You are writing a section of a personalized newsletter digest about a Twitter user's recent activity.
 
-  Context about the person: {CONTEXT}
+  Context about the reader: {CONTEXT}
 
-  Here are their recent tweets:
+  Here are the user's recent tweets, numbered for reference:
   {TWEETS}
 
-  Please summarize:
-  1. What is this person talking about?
-  2. Why might the person in context care about this?
-  3. Any interesting insights or takeaways?
+  Write a short, sharp summary. Reference specific tweets using [1], [2], etc. — these become clickable links. Highlight what matters given the reader's context.
 
-  Keep it concise but informative.
+  Length rules:
+  - 1-2 tweets: 2-3 sentences max. Don't pad thin content.
+  - 3-5 tweets: 1 short paragraph.
+  - 6+ tweets: 2 short paragraphs. No more.
+
+  If there's not much signal, say so briefly and move on. Never inflate a single tweet into multiple paragraphs.
+
+  Style rules:
+  - Write like a sharp friend catching you up over coffee, not a blog post or analyst report.
+  - Use plain, direct language. Say "is" not "serves as." Say "shows" not "is a testament to."
+  - No bullet points or numbered lists. Flowing prose only.
+  - NEVER use these words/phrases: "landscape," "testament," "tapestry," "delve," "groundbreaking," "compelling," "crucial," "vital," "pivotal," "showcases," "underscores," "broader trends," "it's worth noting," "in an era where," "interplay," "foster," "intricacies."
+  - Don't use "Not only...but also" or "It's not just...it's" constructions.
+  - Don't start paragraphs with "In a..." or "In the context of..."
+  - Avoid forced metaphors connecting personal tweets to the reader's work domain. A tweet about someone's marriage doesn't need to be about "building durable infrastructure."
+  - Be concrete. If you reference a tweet's topic, say what it actually says.
