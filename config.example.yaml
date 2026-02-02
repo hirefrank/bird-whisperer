@@ -1,0 +1,30 @@
+cookieSource: chrome
+chromeProfileDir: ~/.config/chromium/Default
+
+users:
+  - email: person@example.com
+    context: "I work at Shopify. I'm interested in AI/ML infrastructure, software trends, and building great products."
+    follows:
+      - username: tobi
+      - username: harleyf
+      - username: vlaurenlee
+      - username: MParakhin
+
+llm:
+  provider: google
+  model: gemini-3-flash-preview
+
+prompt: |
+  You are helping someone stay informed about a Twitter user's activity.
+
+  Context about the person: {CONTEXT}
+
+  Here are their recent tweets:
+  {TWEETS}
+
+  Please summarize:
+  1. What is this person talking about?
+  2. Why might the person in context care about this?
+  3. Any interesting insights or takeaways?
+
+  Keep it concise but informative.
