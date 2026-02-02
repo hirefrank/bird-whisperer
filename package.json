@@ -9,7 +9,7 @@
     "kv:create": "wrangler kv:namespace create BIRD_WHISPERER",
     "sync-cookies": "./scripts/sync-cookies.sh",
     "trigger:enable": "echo 'true' | wrangler secret put ENABLE_MANUAL_TRIGGER",
-    "trigger:disable": "wrangler secret delete ENABLE_MANUAL_TRIGGER 2>/dev/null || true",
+    "trigger:disable": "echo 'false' | wrangler secret put ENABLE_MANUAL_TRIGGER",
     "trigger": "curl https://bird-whisperer.hirefrank.workers.dev/trigger",
     "typecheck": "tsc --noEmit"
   },

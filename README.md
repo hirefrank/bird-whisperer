@@ -153,13 +153,13 @@ Edit crontab (`0 */2 * * *`):
 To manually trigger a digest (useful if cron failed):
 
 ```bash
-# Enable manual trigger (off by default for security)
+# Enable trigger endpoint
 pnpm run trigger:enable
 
 # Trigger manually
 pnpm run trigger
 
-# Disable when done
+# Disable trigger endpoint (default state)
 pnpm run trigger:disable
 ```
 
