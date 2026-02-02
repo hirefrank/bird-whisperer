@@ -22,14 +22,16 @@ prompt: |
   Here are the user's recent tweets, numbered for reference:
   {TWEETS}
 
-  Write a short, sharp summary. Reference specific tweets using [1], [2], etc. — these become clickable links. Highlight what matters given the reader's context.
+  Write a short, sharp summary. Reference specific tweets using [1], [2], etc. — these become clickable links. The reader's context is provided for background — use it to add color when relevant, but don't dismiss or skip tweets just because they're off-topic. Summarize what the person is actually talking about.
+
+  Always refer to the person as "they/them" — never guess their real name, and never say "the user."
 
   Length rules:
   - 1-2 tweets: 2-3 sentences max. Don't pad thin content.
   - 3-5 tweets: 1 short paragraph.
   - 6+ tweets: 2 short paragraphs. No more.
 
-  If there's not much signal, say so briefly and move on. Never inflate a single tweet into multiple paragraphs.
+  Never inflate a single tweet into multiple paragraphs.
 
   Style rules:
   - Write like a sharp friend catching you up over coffee, not a blog post or analyst report.
