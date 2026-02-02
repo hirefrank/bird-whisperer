@@ -10,3 +10,8 @@ id = "YOUR_KV_ID"
 
 [triggers]
 crons = ["0 13 * * *"]  # Daily at 1pm UTC (8am NYC/EST)
+
+[observability]
+[observability.logs]
+enabled = false
+invocation_logs = true
