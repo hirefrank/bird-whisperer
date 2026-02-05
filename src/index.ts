@@ -79,16 +79,37 @@ function createResendClient(apiKey: string) {
   const { Resend } = require('resend');
 
   const resend = new Resend(apiKey);
+  let lastSendTime = 0;
 
   return {
     async send(to: string, subject: string, html: string): Promise<void> {
-      const { error } = await resend.emails.send({
-        from: 'Bird Whisperer <noreply@notifications.hirefrank.com>',
-        to,
-        subject,
-        html,
-      });
-      if (error) {
+      // Enforce minimum 600ms gap between sends to stay under Resend's 2 req/s limit
+      const now = Date.now();
+      const elapsed = now - lastSendTime;
+      if (elapsed < 600) {
+        await new Promise((resolve) => setTimeout(resolve, 600 - elapsed));
+      }
+
+      const maxRetries = 3;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        lastSendTime = Date.now();
+        const { error } = await resend.emails.send({
+          from: 'Bird Whisperer <noreply@notifications.hirefrank.com>',
+          to,
+          subject,
+          html,
+        });
+
+        if (!error) return;
+
+        const isRateLimit = error.message?.toLowerCase().includes('too many requests');
+        if (isRateLimit && attempt < maxRetries) {
+          const backoff = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+          console.log(`Rate limited by Resend, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})...`);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+
         throw new Error(`Resend error: ${error.message}`);
       }
     },
