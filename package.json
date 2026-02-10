@@ -16,13 +16,19 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.0",
-    "@steipete/bird": "^0.8.0",
+    "@steipete/bird": "file:vendor/@steipete/bird",
+    "@steipete/sweet-cookie": "file:vendor/@steipete/sweet-cookie",
     "ai": "^4.0.0",
     "hono": "^4.0.0",
     "js-yaml": "^4.1.0",
     "marked": "^17.0.1",
     "resend": "^4.0.0",
     "zod": "^3.22.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "@steipete/sweet-cookie": "file:vendor/@steipete/sweet-cookie"
+    }
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240117.0",

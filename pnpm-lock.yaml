@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@steipete/sweet-cookie': file:vendor/@steipete/sweet-cookie
+
 importers:
 
   .:
@@ -12,8 +15,11 @@ importers:
         specifier: ^1.0.0
         version: 1.2.22(zod@3.25.76)
       '@steipete/bird':
-        specifier: ^0.8.0
-        version: 0.8.0
+        specifier: file:vendor/@steipete/bird
+        version: file:vendor/@steipete/bird
+      '@steipete/sweet-cookie':
+        specifier: file:vendor/@steipete/sweet-cookie
+        version: file:vendor/@steipete/sweet-cookie
       ai:
         specifier: ^4.0.0
         version: 4.3.19(react@19.2.4)(zod@3.25.76)
@@ -647,14 +653,11 @@ packages:
   '@speed-highlight/core@1.2.14':
     resolution: {integrity: sha512-G4ewlBNhUtlLvrJTb88d2mdy2KRijzs4UhnlrOSRT4bmjh/IqNElZa3zkrZ+TC47TwtlDWzVLFADljF1Ijp5hA==}
 
-  '@steipete/bird@0.8.0':
-    resolution: {integrity: sha512-p7+a9a/olzf1Rxe56a51VMFoBlFQpFVosC5B8dB3rOT8UbSZ3Ey5eXCZoLDjKXDf8xKINvSmGtMAd3yjeE4Gcw==}
-    engines: {node: '>=22'}
-    hasBin: true
+  '@steipete/bird@file:vendor/@steipete/bird':
+    resolution: {directory: vendor/@steipete/bird, type: directory}
 
-  '@steipete/sweet-cookie@0.1.0':
-    resolution: {integrity: sha512-cF8hS6rTohAFI1NAm2/HM9omBlw6V1DpwF6q5e9FB+l274HjtyirCgCc6QK2Rtuh7uDoqWHshFQZPsceyJuVgw==}
-    engines: {node: '>=22'}
+  '@steipete/sweet-cookie@file:vendor/@steipete/sweet-cookie':
+    resolution: {directory: vendor/@steipete/sweet-cookie, type: directory}
 
   '@types/diff-match-patch@1.0.36':
     resolution: {integrity: sha512-xFdR6tkm0MWvBfO8xXCSsinYxHcqkQUlcHeSpMC2ukzOb6lwQAfDmW+Qt0AvlGd8HpsS28qKsB+oPeJn9I39jg==}
@@ -1300,14 +1303,13 @@ snapshots:
 
   '@speed-highlight/core@1.2.14': {}
 
-  '@steipete/bird@0.8.0':
+  '@steipete/bird@file:vendor/@steipete/bird':
     dependencies:
-      '@steipete/sweet-cookie': 0.1.0
       commander: 14.0.3
       json5: 2.2.3
       kleur: 4.1.5
 
-  '@steipete/sweet-cookie@0.1.0': {}
+  '@steipete/sweet-cookie@file:vendor/@steipete/sweet-cookie': {}
 
   '@types/diff-match-patch@1.0.36': {}
 
