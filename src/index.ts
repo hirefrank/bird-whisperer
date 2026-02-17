@@ -11,6 +11,26 @@ export interface Env {
 import { loadConfig, type Config } from './config'
 import { marked } from 'marked'
 
+const TWITTER_BLUE = '#1da1f2'
+
+function fillPromptTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{([A-Z_]+)\}/g, (match, key) => {
+    return key in values ? values[key] : match
+  })
+}
+
+function linkFollowedMentionsInHtml(html: string, followedHandles: Set<string>): string {
+  return html.replace(/<a\b[^>]*>[\s\S]*?<\/a>|@([A-Za-z0-9_]{1,15})/gi, (match, username?: string) => {
+    if (!username) return match
+
+    if (!followedHandles.has(username.toLowerCase())) {
+      return match
+    }
+
+    return `<a href="https://x.com/${username}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">@${username}</a>`
+  })
+}
+
 function createTwitterClient(authToken: string, ct0: string) {
   const { TwitterClient } = require('@steipete/bird');
   return new TwitterClient({ cookies: { authToken, ct0 } });
@@ -49,6 +69,32 @@ Style rules:
 - Avoid forced metaphors connecting personal tweets to the reader's work domain. A tweet about someone's marriage doesn't need to be about "building durable infrastructure."
 - Be concrete. If you reference a tweet's topic, say what it actually says.`;
 
+  const aggregatePrompt = `You are analyzing tweets from multiple Twitter accounts to identify shared conversations and trending topics across a reader's follows.
+
+Context about the reader: {CONTEXT}
+
+Here are recent tweets grouped by account:
+
+{GROUPED_TWEETS}
+
+Identify topics, events, or conversations that 2 or more accounts are discussing. A shared topic means multiple people are reacting to, commenting on, or referencing the same underlying thing — a viral tweet, news event, product launch, shared link, etc.
+
+If you find shared topics, write a brief trending section. For each shared topic:
+- Bold the topic name
+- Mention which @handles are discussing it (use @username format)
+- Summarize what they're collectively saying in 1-2 sentences
+- If handles have notably different takes, note the contrast
+
+Rules:
+- Only surface topics that genuinely appear across 2+ accounts. Don't force connections.
+- If accounts are directly replying to or quoting each other about the same thing, that's a strong signal.
+- 1-3 shared topics max. Quality over quantity.
+- Same style rules as individual summaries: plain, direct, no filler words.
+- Do NOT use [N] tweet references — this is a high-level cross-account view.
+- Use flowing prose, not bullet points.
+
+If there are no meaningful shared topics across accounts, respond with exactly and only: NO_SHARED_TOPICS`
+
   return {
     async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
       const tweetText = tweets
@@ -66,11 +112,47 @@ Style rules:
 
       const { text } = await generateText({
         model: google(model),
-        prompt: prompt.replace('{CONTEXT}', context).replace('{TWEETS}', tweetText),
+        prompt: fillPromptTemplate(prompt, {
+          CONTEXT: context,
+          TWEETS: tweetText,
+        }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
       });
 
       return { summary: text, links, tweetCount: tweets.length };
+    },
+
+    async aggregateTopics(handleTweets: { username: string; tweets: any[] }[], context: string): Promise<string> {
+      const groupedText = handleTweets
+        .map((h) => {
+          const tweets = h.tweets
+            .map((t) => {
+              let line = `- ${t.text}`
+              if (t.quotedTweet?.text) {
+                const author = t.quotedTweet.author?.username ? `@${t.quotedTweet.author.username}` : 'unknown'
+                line += `\n  ↳ Quoted ${author}: "${t.quotedTweet.text}"`
+              }
+              return line
+            })
+            .join('\n')
+          return `@${h.username}:\n${tweets}`
+        })
+        .join('\n\n')
+
+      const { text } = await generateText({
+        model: google(model),
+        prompt: fillPromptTemplate(aggregatePrompt, {
+          CONTEXT: context,
+          GROUPED_TWEETS: groupedText,
+        }),
+        system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
+      })
+
+      if (text.trim() === 'NO_SHARED_TOPICS') {
+        return ''
+      }
+
+      return text
     },
   };
 }
@@ -159,7 +241,7 @@ async function runDigest(env: Env) {
     }
 
     console.log(`Processing digest for ${emails.join(', ')}...`);
-    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number }[] = [];
+    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: any[] }[] = [];
 
     for (const follow of user.follows) {
       const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
@@ -190,12 +272,12 @@ async function runDigest(env: Env) {
       summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
         const idx = parseInt(num, 10) - 1
         if (idx >= 0 && idx < links.length) {
-          return `<a href="${links[idx]}" style="color: #1da1f2; text-decoration: none; font-weight: 600;">[${num}]</a>`
+          return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
         }
         return match
       })
 
-      handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount })
+      handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount, tweets })
     }
 
     if (handleSummaries.length === 0) {
@@ -203,16 +285,50 @@ async function runDigest(env: Env) {
       continue;
     }
 
+    // Aggregate topic detection: identify shared topics across 2+ handles
+    let aggregateHtml = ''
+    const handlesWithTweets = handleSummaries.filter(h => h.tweets.length > 0)
+    if (handlesWithTweets.length >= 2) {
+      console.log(`Detecting shared topics across ${handlesWithTweets.length} handles...`)
+      try {
+        const aggregateMarkdown = await llm.aggregateTopics(
+          handlesWithTweets.map(h => ({ username: h.username, tweets: h.tweets })),
+          user.context
+        )
+        if (aggregateMarkdown) {
+          // Convert @username mentions to linked handles
+          let parsed = await marked.parse(aggregateMarkdown)
+          const followedHandles = new Set(handlesWithTweets.map(h => h.username.toLowerCase()))
+          parsed = linkFollowedMentionsInHtml(parsed, followedHandles)
+          aggregateHtml = parsed
+          console.log('Shared topics detected, adding trending section')
+        } else {
+          console.log('No shared topics detected across handles')
+        }
+      } catch (err) {
+        console.error('Failed to detect aggregate topics:', err)
+      }
+    }
+
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const trendingSection = aggregateHtml ? `
+        <div style="margin-bottom: 30px; padding: 16px 20px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid ${TWITTER_BLUE};">
+          <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">📡 Trending Across Your Follows</h2>
+          <div style="line-height: 1.6;">${aggregateHtml}</div>
+        </div>
+    ` : ''
+
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h1 style="margin-bottom: 5px;">🐦 Bird Whisperer Digest</h1>
         <p style="color: #666; margin-bottom: 30px;">${dateStr}</p>
 
+        ${trendingSection}
+
         ${handleSummaries.map((h) => `
           <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             <h2 style="margin: 0 0 10px 0;">
-              <a href="https://x.com/${h.username}" style="color: #1da1f2; text-decoration: none;">@${h.username}</a>
+              <a href="https://x.com/${h.username}" style="color: ${TWITTER_BLUE}; text-decoration: none;">@${h.username}</a>
             </h2>
             <div style="line-height: 1.6;">${h.summary}</div>
             <p style="color: #666; font-size: 14px;">${h.tweetCount} new tweet${h.tweetCount !== 1 ? 's' : ''}</p>
