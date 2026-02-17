@@ -11,6 +11,26 @@ export interface Env {
 import { loadConfig, type Config } from './config'
 import { marked } from 'marked'
 
+const TWITTER_BLUE = '#1da1f2'
+
+function fillPromptTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{([A-Z_]+)\}/g, (match, key) => {
+    return key in values ? values[key] : match
+  })
+}
+
+function linkFollowedMentionsInHtml(html: string, followedHandles: Set<string>): string {
+  return html.replace(/<a\b[^>]*>[\s\S]*?<\/a>|@([A-Za-z0-9_]{1,15})/gi, (match, username?: string) => {
+    if (!username) return match
+
+    if (!followedHandles.has(username.toLowerCase())) {
+      return match
+    }
+
+    return `<a href="https://x.com/${username}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">@${username}</a>`
+  })
+}
+
 function createTwitterClient(authToken: string, ct0: string) {
   const { TwitterClient } = require('@steipete/bird');
   return new TwitterClient({ cookies: { authToken, ct0 } });
@@ -92,7 +112,10 @@ If there are no meaningful shared topics across accounts, respond with exactly a
 
       const { text } = await generateText({
         model: google(model),
-        prompt: prompt.replace('{CONTEXT}', context).replace('{TWEETS}', tweetText),
+        prompt: fillPromptTemplate(prompt, {
+          CONTEXT: context,
+          TWEETS: tweetText,
+        }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
       });
 
@@ -118,7 +141,10 @@ If there are no meaningful shared topics across accounts, respond with exactly a
 
       const { text } = await generateText({
         model: google(model),
-        prompt: aggregatePrompt.replace('{CONTEXT}', context).replace('{GROUPED_TWEETS}', groupedText),
+        prompt: fillPromptTemplate(aggregatePrompt, {
+          CONTEXT: context,
+          GROUPED_TWEETS: groupedText,
+        }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
       })
 
@@ -246,7 +272,7 @@ async function runDigest(env: Env) {
       summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
         const idx = parseInt(num, 10) - 1
         if (idx >= 0 && idx < links.length) {
-          return `<a href="${links[idx]}" style="color: #1da1f2; text-decoration: none; font-weight: 600;">[${num}]</a>`
+          return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
         }
         return match
       })
@@ -272,13 +298,8 @@ async function runDigest(env: Env) {
         if (aggregateMarkdown) {
           // Convert @username mentions to linked handles
           let parsed = await marked.parse(aggregateMarkdown)
-          parsed = parsed.replace(/@(\w+)/g, (match, username) => {
-            const isFollowed = handlesWithTweets.some(h => h.username.toLowerCase() === username.toLowerCase())
-            if (isFollowed) {
-              return `<a href="https://x.com/${username}" style="color: #1da1f2; text-decoration: none; font-weight: 600;">@${username}</a>`
-            }
-            return match
-          })
+          const followedHandles = new Set(handlesWithTweets.map(h => h.username.toLowerCase()))
+          parsed = linkFollowedMentionsInHtml(parsed, followedHandles)
           aggregateHtml = parsed
           console.log('Shared topics detected, adding trending section')
         } else {
@@ -291,7 +312,7 @@ async function runDigest(env: Env) {
 
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const trendingSection = aggregateHtml ? `
-        <div style="margin-bottom: 30px; padding: 16px 20px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #1da1f2;">
+        <div style="margin-bottom: 30px; padding: 16px 20px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid ${TWITTER_BLUE};">
           <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">📡 Trending Across Your Follows</h2>
           <div style="line-height: 1.6;">${aggregateHtml}</div>
         </div>
@@ -307,7 +328,7 @@ async function runDigest(env: Env) {
         ${handleSummaries.map((h) => `
           <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             <h2 style="margin: 0 0 10px 0;">
-              <a href="https://x.com/${h.username}" style="color: #1da1f2; text-decoration: none;">@${h.username}</a>
+              <a href="https://x.com/${h.username}" style="color: ${TWITTER_BLUE}; text-decoration: none;">@${h.username}</a>
             </h2>
             <div style="line-height: 1.6;">${h.summary}</div>
             <p style="color: #666; font-size: 14px;">${h.tweetCount} new tweet${h.tweetCount !== 1 ? 's' : ''}</p>
