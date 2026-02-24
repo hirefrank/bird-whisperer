@@ -54,6 +54,14 @@ interface XApiUser {
   name: string
 }
 
+interface XApiProblem {
+  title?: string
+  detail?: string
+  message?: string
+  type?: string
+  status?: number
+}
+
 interface XApiTweetsResponse {
   data?: XApiTweet[]
   includes?: {
@@ -66,7 +74,7 @@ interface XApiTweetsResponse {
     newest_id?: string
     oldest_id?: string
   }
-  errors?: Array<{ message: string; type: string }>
+  errors?: XApiProblem[]
 }
 
 interface XApiUserResponse {
@@ -75,7 +83,15 @@ interface XApiUserResponse {
     username: string
     name: string
   }
-  errors?: Array<{ message: string; type: string }>
+  errors?: XApiProblem[]
+}
+
+function formatXApiErrors(errors: XApiProblem[] | undefined): string {
+  if (!errors?.length) return 'Unknown X API error'
+
+  return errors
+    .map((problem) => problem.detail || problem.title || problem.message || 'Unknown X API error')
+    .join(' | ')
 }
 
 interface NormalizedTweet {
@@ -97,77 +113,94 @@ function createTwitterClient(bearerToken: string) {
 
   return {
     async getUserIdByUsername(username: string): Promise<{ success: boolean; userId?: string; error?: string }> {
-      const resp = await fetch(`${baseUrl}/users/by/username/${encodeURIComponent(username)}`, { headers })
-      if (!resp.ok) {
-        const body = await resp.text()
-        return { success: false, error: `HTTP ${resp.status}: ${body}` }
+      try {
+        const resp = await fetch(`${baseUrl}/users/by/username/${encodeURIComponent(username)}`, { headers })
+        if (!resp.ok) {
+          const body = await resp.text()
+          return { success: false, error: `HTTP ${resp.status}: ${body}` }
+        }
+
+        const body = await resp.json() as XApiUserResponse
+        if (body.errors?.length) {
+          return { success: false, error: formatXApiErrors(body.errors) }
+        }
+        if (!body.data?.id) {
+          return { success: false, error: 'User not found' }
+        }
+        return { success: true, userId: body.data.id }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[getUserIdByUsername] Failed to resolve @${username}: ${message}`)
+        return { success: false, error: `Request failed: ${message}` }
       }
-      const body = await resp.json() as XApiUserResponse
-      if (body.errors?.length) {
-        return { success: false, error: body.errors[0].message }
-      }
-      if (!body.data?.id) {
-        return { success: false, error: 'User not found' }
-      }
-      return { success: true, userId: body.data.id }
     },
 
     async getUserTweets(
       userId: string,
       options: { maxResults?: number; sinceId?: string; startTime?: string } = {}
     ): Promise<NormalizedTweet[]> {
-      const params = new URLSearchParams({
-        max_results: String(options.maxResults || 20),
-        'tweet.fields': 'created_at,public_metrics,referenced_tweets,author_id',
-        expansions: 'referenced_tweets.id,referenced_tweets.id.author_id',
-        'user.fields': 'username,name',
-      })
-      if (options.sinceId) params.set('since_id', options.sinceId)
-      if (options.startTime) params.set('start_time', options.startTime)
+      try {
+        const params = new URLSearchParams({
+          max_results: String(options.maxResults || 20),
+          'tweet.fields': 'created_at,public_metrics,referenced_tweets,author_id',
+          expansions: 'referenced_tweets.id,referenced_tweets.id.author_id',
+          'user.fields': 'username,name',
+        })
+        if (options.sinceId) params.set('since_id', options.sinceId)
+        if (options.startTime) params.set('start_time', options.startTime)
 
-      const resp = await fetch(`${baseUrl}/users/${encodeURIComponent(userId)}/tweets?${params}`, { headers })
-      if (!resp.ok) {
-        const body = await resp.text()
-        console.error(`Failed to fetch tweets for user ${userId}: HTTP ${resp.status}: ${body}`)
-        return []
-      }
-      const body = await resp.json() as XApiTweetsResponse
-      if (!body.data) return []
+        const resp = await fetch(`${baseUrl}/users/${encodeURIComponent(userId)}/tweets?${params}`, { headers })
+        if (!resp.ok) {
+          const body = await resp.text()
+          console.error(`Failed to fetch tweets for user ${userId}: HTTP ${resp.status}: ${body}`)
+          return []
+        }
 
-      // Build lookup maps for included tweets and users
-      const includedTweets = new Map<string, XApiTweet>()
-      const includedUsers = new Map<string, XApiUser>()
-      if (body.includes?.tweets) {
-        for (const t of body.includes.tweets) includedTweets.set(t.id, t)
-      }
-      if (body.includes?.users) {
-        for (const u of body.includes.users) includedUsers.set(u.id, u)
-      }
+        const body = await resp.json() as XApiTweetsResponse
+        if (body.errors?.length) {
+          console.error(`[getUserTweets] X API returned errors for user ${userId}: ${formatXApiErrors(body.errors)}`)
+        }
+        if (!body.data) return []
 
-      return body.data.map((tweet): NormalizedTweet => {
-        const quotedRef = tweet.referenced_tweets?.find(r => r.type === 'quoted')
-        let quotedTweet: NormalizedTweet['quotedTweet']
-        if (quotedRef) {
-          const qt = includedTweets.get(quotedRef.id)
-          if (qt) {
-            const qtAuthor = qt.author_id ? includedUsers.get(qt.author_id) : undefined
-            quotedTweet = {
-              text: qt.text,
-              author: qtAuthor ? { username: qtAuthor.username } : undefined,
+        // Build lookup maps for included tweets and users
+        const includedTweets = new Map<string, XApiTweet>()
+        const includedUsers = new Map<string, XApiUser>()
+        if (body.includes?.tweets) {
+          for (const t of body.includes.tweets) includedTweets.set(t.id, t)
+        }
+        if (body.includes?.users) {
+          for (const u of body.includes.users) includedUsers.set(u.id, u)
+        }
+
+        return body.data.map((tweet): NormalizedTweet => {
+          const quotedRef = tweet.referenced_tweets?.find(r => r.type === 'quoted')
+          let quotedTweet: NormalizedTweet['quotedTweet']
+          if (quotedRef) {
+            const qt = includedTweets.get(quotedRef.id)
+            if (qt) {
+              const qtAuthor = qt.author_id ? includedUsers.get(qt.author_id) : undefined
+              quotedTweet = {
+                text: qt.text,
+                author: qtAuthor ? { username: qtAuthor.username } : undefined,
+              }
             }
           }
-        }
 
-        return {
-          id: tweet.id,
-          text: tweet.text,
-          createdAt: tweet.created_at,
-          replyCount: tweet.public_metrics?.reply_count,
-          retweetCount: tweet.public_metrics?.retweet_count,
-          likeCount: tweet.public_metrics?.like_count,
-          quotedTweet,
-        }
-      })
+          return {
+            id: tweet.id,
+            text: tweet.text,
+            createdAt: tweet.created_at,
+            replyCount: tweet.public_metrics?.reply_count,
+            retweetCount: tweet.public_metrics?.retweet_count,
+            likeCount: tweet.public_metrics?.like_count,
+            quotedTweet,
+          }
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[getUserTweets] Failed to fetch tweets for user ${userId}: ${message}`)
+        return []
+      }
     },
   }
 }
