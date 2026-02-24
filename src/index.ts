@@ -1,9 +1,35 @@
+interface CloudflareEmailMessage {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  cc?: string | string[];
+  bcc?: string | string[];
+  replyTo?: string;
+  headers?: Record<string, string>;
+}
+
+interface CloudflareEmailResponse {
+  messageId: string;
+  success: boolean;
+}
+
+interface CloudflareEmailBinding {
+  send(message: CloudflareEmailMessage): Promise<CloudflareEmailResponse>;
+}
+
 export interface Env {
   BIRD_WHISPERER: KVNamespace;
   ASSETS: Fetcher;
   X_BEARER_TOKEN: string;
   GEMINI_API_KEY: string;
-  RESEND_API_KEY: string;
+  RESEND_API_KEY?: string;
+  EMAIL_PROVIDER?: string;
+  EMAIL_FROM?: string;
+  EMAIL_REPLY_TO?: string;
+  EMAIL?: CloudflareEmailBinding;
+  CONFIG_YAML?: string;
   ENABLE_MANUAL_TRIGGER?: string;
 }
 
@@ -11,6 +37,13 @@ import { loadConfig, type Config } from './config'
 import { marked } from 'marked'
 
 const TWITTER_BLUE = '#1da1f2'
+const DEFAULT_FROM = 'Bird Whisperer <noreply@notifications.hirefrank.com>'
+
+type EmailProvider = 'cloudflare' | 'resend'
+
+interface EmailClient {
+  send(to: string, subject: string, html: string): Promise<void>
+}
 
 function fillPromptTemplate(template: string, values: Record<string, string>): string {
   return template.replace(/\{([A-Z_]+)\}/g, (match, key) => {
@@ -326,7 +359,59 @@ If there are no meaningful shared topics across accounts, respond with exactly a
   };
 }
 
-function createResendClient(apiKey: string) {
+function getEmailProvider(env: Env): EmailProvider {
+  const configuredProvider = env.EMAIL_PROVIDER?.trim().toLowerCase()
+  if (configuredProvider === 'cloudflare' || configuredProvider === 'resend') {
+    return configuredProvider
+  }
+
+  if (configuredProvider) {
+    throw new Error(`Unsupported EMAIL_PROVIDER '${env.EMAIL_PROVIDER}'. Expected 'resend' or 'cloudflare'.`)
+  }
+
+  if (env.RESEND_API_KEY) {
+    return 'resend'
+  }
+
+  if (env.EMAIL) {
+    return 'cloudflare'
+  }
+
+  throw new Error('No email provider configured. Set RESEND_API_KEY or bind EMAIL (Cloudflare Email Service).')
+}
+
+function createCloudflareEmailClient(
+  emailBinding: CloudflareEmailBinding,
+  from: string,
+  replyTo: string | undefined,
+): EmailClient {
+  return {
+    async send(to: string, subject: string, html: string): Promise<void> {
+      const payload: CloudflareEmailMessage = {
+        from,
+        to,
+        subject,
+        html,
+      }
+
+      if (replyTo) {
+        payload.replyTo = replyTo
+      }
+
+      try {
+        const result = await emailBinding.send(payload)
+        if (!result.success) {
+          throw new Error('Cloudflare Email Service returned success=false')
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new Error(`Cloudflare Email Service error: ${errorMessage}`)
+      }
+    },
+  }
+}
+
+function createResendClient(apiKey: string, from: string, replyTo: string | undefined): EmailClient {
   const { Resend } = require('resend');
 
   const resend = new Resend(apiKey);
@@ -343,12 +428,21 @@ function createResendClient(apiKey: string) {
 
       const maxAttempts = 3;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const { error } = await resend.emails.send({
-          from: 'Bird Whisperer <noreply@notifications.hirefrank.com>',
+        const payload: {
+          from: string
+          to: string
+          subject: string
+          html: string
+          replyTo?: string
+        } = {
+          from,
           to,
           subject,
           html,
-        });
+          ...(replyTo ? { replyTo } : {}),
+        }
+
+        const { error } = await resend.emails.send(payload);
 
         if (!error) {
           lastSendTime = Date.now();
@@ -356,9 +450,10 @@ function createResendClient(apiKey: string) {
         }
 
         // Resend returns "Too Many Requests" on 429; also check statusCode if available
+        const resendError = error as { statusCode?: number; message?: string }
         const isRateLimit =
-          (error as any).statusCode === 429 ||
-          error.message?.toLowerCase().includes('too many requests');
+          resendError.statusCode === 429 ||
+          resendError.message?.toLowerCase().includes('too many requests') === true
         if (isRateLimit && attempt < maxAttempts - 1) {
           const backoff = 1000 * Math.pow(2, attempt); // 1s, 2s
           console.log(`Rate limited by Resend, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxAttempts})...`);
@@ -366,10 +461,29 @@ function createResendClient(apiKey: string) {
           continue;
         }
 
-        throw new Error(`Resend error: ${error.message}`);
+        throw new Error(`Resend error: ${resendError.message || 'Unknown error'}`);
       }
     },
   };
+}
+
+function createEmailClient(env: Env, provider: EmailProvider): EmailClient {
+  const from = env.EMAIL_FROM || DEFAULT_FROM
+  const replyTo = env.EMAIL_REPLY_TO
+
+  if (provider === 'cloudflare') {
+    if (!env.EMAIL) {
+      throw new Error("EMAIL binding is required when EMAIL_PROVIDER is 'cloudflare'")
+    }
+
+    return createCloudflareEmailClient(env.EMAIL, from, replyTo)
+  }
+
+  if (!env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is required when EMAIL_PROVIDER is 'resend'")
+  }
+
+  return createResendClient(env.RESEND_API_KEY, from, replyTo)
 }
 
 async function resolveUserId(
@@ -412,11 +526,14 @@ async function fetchUserTweets(
 }
 
 async function runDigest(env: Env) {
-  const config = loadConfig();
+  const config = loadConfig(env.CONFIG_YAML);
   const client = createTwitterClient(env.X_BEARER_TOKEN);
   const prompt = (config.prompt as string | undefined) ?? undefined;
   const llm = createLlmClient(config.llm.model, env.GEMINI_API_KEY, prompt);
-  const email = createResendClient(env.RESEND_API_KEY);
+  const emailProvider = getEmailProvider(env)
+  const email = createEmailClient(env, emailProvider)
+
+  console.log(`Using email provider: ${emailProvider}`)
 
   const today = new Date().toISOString().split('T')[0];
 

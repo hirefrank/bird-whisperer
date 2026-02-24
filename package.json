@@ -5,13 +5,41 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --remote",
+    "dev:local": "wrangler dev --remote -c wrangler.local.toml",
     "deploy": "wrangler deploy",
+    "deploy:local": "wrangler deploy -c wrangler.local.toml",
     "kv:create": "wrangler kv:namespace create BIRD_WHISPERER",
     "trigger:enable": "echo 'true' | wrangler secret put ENABLE_MANUAL_TRIGGER",
     "trigger:disable": "echo 'false' | wrangler secret put ENABLE_MANUAL_TRIGGER",
-    "trigger": "curl https://bird-whisperer.hirefrank.workers.dev/trigger",
+    "trigger": "node scripts/trigger.mjs",
+    "config:push": "./scripts/push-config-secret.sh",
     "kv:reset": "./scripts/kv-reset.sh",
     "typecheck": "tsc --noEmit"
+  },
+  "cloudflare": {
+    "bindings": {
+      "X_BEARER_TOKEN": {
+        "description": "X API Bearer token for reading tweets via v2 API."
+      },
+      "GEMINI_API_KEY": {
+        "description": "Google Gemini API key used for digest summarization."
+      },
+      "RESEND_API_KEY": {
+        "description": "Optional when using Resend email delivery. Not required if using Cloudflare Email Service."
+      },
+      "CONFIG_YAML": {
+        "description": "Optional full YAML config override. If set, this takes precedence over bundled `config.yaml`."
+      },
+      "EMAIL_PROVIDER": {
+        "description": "Optional provider override: `resend` or `cloudflare`."
+      },
+      "EMAIL_FROM": {
+        "description": "Optional sender override, e.g. `Bird Whisperer <noreply@yourdomain.com>`."
+      },
+      "EMAIL_REPLY_TO": {
+        "description": "Optional reply-to override for outbound digest emails."
+      }
+    }
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.0",

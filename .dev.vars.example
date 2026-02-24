@@ -1,0 +1,17 @@
+# Required
+X_BEARER_TOKEN=your-x-api-bearer-token
+GEMINI_API_KEY=your-gemini-api-key
+
+# Email provider (choose one)
+# RESEND_API_KEY=re_your_resend_key
+
+# Optional runtime config override (YAML string)
+# CONFIG_YAML="users:\n  - email: you@example.com\n    context: \"Your context\"\n    follows:\n      - username: tobi\n\nllm:\n  provider: google\n  model: gemini-3-flash-preview"
+
+# Optional provider + sender overrides
+# EMAIL_PROVIDER=resend
+# EMAIL_FROM="Bird Whisperer <noreply@yourdomain.com>"
+# EMAIL_REPLY_TO=you@example.com
+
+# Optional manual trigger toggle
+# ENABLE_MANUAL_TRIGGER=true

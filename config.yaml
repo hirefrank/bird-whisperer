@@ -1,0 +1,11 @@
+# Template config tracked in git for one-click deploy.
+# Add users below, or set CONFIG_YAML as a secret to override this file at runtime.
+
+users: []
+
+llm:
+  provider: google
+  model: gemini-3-flash-preview
+
+# Optional prompt override.
+# If omitted, Bird Whisperer uses the built-in default prompt.

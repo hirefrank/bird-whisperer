@@ -18,10 +18,13 @@ pnpm run kv:create
 # Reset all remote KV state (lastSeen + sent flags)
 pnpm run kv:reset
 
+# Push local YAML config to CONFIG_YAML secret
+pnpm run config:push
+
 # Manual trigger controls
 pnpm run trigger:enable   # Enable /trigger endpoint
 pnpm run trigger:disable  # Disable /trigger endpoint
-pnpm run trigger          # Execute manual trigger
+WORKER_URL=https://your-worker.workers.dev pnpm run trigger  # Execute manual trigger
 ```
 
 ## Development Environment
@@ -30,11 +33,11 @@ pnpm run trigger          # Execute manual trigger
 - Uses remote Cloudflare Workers runtime (not local Miniflare)
 - Connects to remote KV namespace for state
 - Requires active internet connection
-- Tests against real external APIs (Twitter, Gemini, Resend)
+- Tests against real external APIs (X, Gemini, Resend/Cloudflare Email Service)
 
 This ensures dev matches production exactly, but means you need:
-- Valid secrets configured in Cloudflare (`X_BEARER_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`)
-- Active API keys for X API, Gemini, and Resend
+- Valid secrets configured in Cloudflare (`X_BEARER_TOKEN`, `GEMINI_API_KEY`, and optional `RESEND_API_KEY`)
+- Active API keys for X API and Gemini, plus one email provider (Resend or Cloudflare Email Service)
 
 ## Code Style Guidelines
 
@@ -93,6 +96,8 @@ This ensures dev matches production exactly, but means you need:
 
 ### Configuration
 - Use YAML for human-editable config (bundled via wrangler rules)
+- Runtime config can be overridden by `CONFIG_YAML` secret (takes precedence over bundled `config.yaml`)
+- `wrangler.toml` is committed as a template for Deploy-to-Cloudflare button flow; keep personal values in `wrangler.local.toml`
 - Add TypeScript declarations for non-standard imports (see `yaml.d.ts`)
 - Validate config at load time with Zod schemas
 
@@ -104,13 +109,13 @@ This ensures dev matches production exactly, but means you need:
 ### Testing
 - **No test framework currently configured**
 - To add testing, consider: Vitest with `wrangler-vitest-integration`
-- Manual testing via: `pnpm run dev` + `pnpm run trigger`
+- Manual testing via: `pnpm run dev` + `WORKER_URL=... pnpm run trigger`
 
 ### Pre-Commit Checklist
 1. Run `pnpm run typecheck` - must pass
 2. Verify no secrets in code
 3. Test manual trigger if changing core logic
-4. Ensure config.yaml.example is updated if schema changes
+4. Ensure `config.example.yaml` is updated if schema changes
 
 ### Project Structure
 ```
@@ -120,17 +125,21 @@ src/
   yaml.d.ts           # Type declarations for YAML imports
 scripts/
   kv-reset.sh         # Delete all keys from remote KV namespace
+  push-config-secret.sh # Push config YAML into CONFIG_YAML secret
+  trigger.mjs         # Invoke /trigger endpoint via WORKER_URL
 ```
 
 ### Key Architectural Patterns
-- **Factory functions**: `createXClient()` returns interface-implementing objects
+- **Factory functions**: `createTwitterClient()` and provider factories return interface-implementing objects
 - **Cron-triggered**: Worker runs on schedule via `[triggers]` in wrangler.toml
 - **KV-backed**: State persisted in Cloudflare KV (last seen IDs, sent flags)
 - **Lazy loading**: Heavy deps loaded via `require()` inside functions, not at top
+- **Aggregate insights block**: optional cross-follow trend summary is generated when 2+ follows have fresh tweets
 
 ### Scaling & Performance
 - **15-minute timeout** for scheduled triggers on Cloudflare Workers
 - Each follow requires: 1 X API call (user tweets) + 1 Gemini API call (userId cached in KV after first lookup)
-- Each user requires: 1 email send via Resend
+- Each user may add: 1 extra Gemini API call for aggregate insights across follows
+- Each user requires: 1 email send via configured provider (Resend or Cloudflare Email Service)
 - **Recommended:** Max ~5 users with ~5 follows each (25 total follows) to stay within timeout
 - Consider queue-based architecture with Durable Objects if scaling beyond this
