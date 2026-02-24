@@ -1,8 +1,7 @@
 export interface Env {
   BIRD_WHISPERER: KVNamespace;
   ASSETS: Fetcher;
-  AUTH_TOKEN: string;
-  CT0: string;
+  X_BEARER_TOKEN: string;
   GEMINI_API_KEY: string;
   RESEND_API_KEY: string;
   ENABLE_MANUAL_TRIGGER?: string;
@@ -31,9 +30,146 @@ function linkFollowedMentionsInHtml(html: string, followedHandles: Set<string>):
   })
 }
 
-function createTwitterClient(authToken: string, ct0: string) {
-  const { TwitterClient } = require('@steipete/bird');
-  return new TwitterClient({ cookies: { authToken, ct0 } });
+// X API v2 response types
+interface XApiTweet {
+  id: string
+  text: string
+  author_id?: string
+  created_at?: string
+  public_metrics?: {
+    retweet_count: number
+    reply_count: number
+    like_count: number
+    quote_count: number
+  }
+  referenced_tweets?: Array<{
+    type: 'retweeted' | 'quoted' | 'replied_to'
+    id: string
+  }>
+}
+
+interface XApiUser {
+  id: string
+  username: string
+  name: string
+}
+
+interface XApiTweetsResponse {
+  data?: XApiTweet[]
+  includes?: {
+    tweets?: XApiTweet[]
+    users?: XApiUser[]
+  }
+  meta?: {
+    result_count: number
+    next_token?: string
+    newest_id?: string
+    oldest_id?: string
+  }
+  errors?: Array<{ message: string; type: string }>
+}
+
+interface XApiUserResponse {
+  data?: {
+    id: string
+    username: string
+    name: string
+  }
+  errors?: Array<{ message: string; type: string }>
+}
+
+interface NormalizedTweet {
+  id: string
+  text: string
+  createdAt?: string
+  replyCount?: number
+  retweetCount?: number
+  likeCount?: number
+  quotedTweet?: {
+    text: string
+    author?: { username: string }
+  }
+}
+
+function createTwitterClient(bearerToken: string) {
+  const baseUrl = 'https://api.x.com/2'
+  const headers = { Authorization: `Bearer ${bearerToken}` }
+
+  return {
+    async getUserIdByUsername(username: string): Promise<{ success: boolean; userId?: string; error?: string }> {
+      const resp = await fetch(`${baseUrl}/users/by/username/${encodeURIComponent(username)}`, { headers })
+      if (!resp.ok) {
+        const body = await resp.text()
+        return { success: false, error: `HTTP ${resp.status}: ${body}` }
+      }
+      const body = await resp.json() as XApiUserResponse
+      if (body.errors?.length) {
+        return { success: false, error: body.errors[0].message }
+      }
+      if (!body.data?.id) {
+        return { success: false, error: 'User not found' }
+      }
+      return { success: true, userId: body.data.id }
+    },
+
+    async getUserTweets(
+      userId: string,
+      options: { maxResults?: number; sinceId?: string; startTime?: string } = {}
+    ): Promise<NormalizedTweet[]> {
+      const params = new URLSearchParams({
+        max_results: String(options.maxResults || 20),
+        'tweet.fields': 'created_at,public_metrics,referenced_tweets,author_id',
+        expansions: 'referenced_tweets.id,referenced_tweets.id.author_id',
+        'user.fields': 'username,name',
+      })
+      if (options.sinceId) params.set('since_id', options.sinceId)
+      if (options.startTime) params.set('start_time', options.startTime)
+
+      const resp = await fetch(`${baseUrl}/users/${encodeURIComponent(userId)}/tweets?${params}`, { headers })
+      if (!resp.ok) {
+        const body = await resp.text()
+        console.error(`Failed to fetch tweets for user ${userId}: HTTP ${resp.status}: ${body}`)
+        return []
+      }
+      const body = await resp.json() as XApiTweetsResponse
+      if (!body.data) return []
+
+      // Build lookup maps for included tweets and users
+      const includedTweets = new Map<string, XApiTweet>()
+      const includedUsers = new Map<string, XApiUser>()
+      if (body.includes?.tweets) {
+        for (const t of body.includes.tweets) includedTweets.set(t.id, t)
+      }
+      if (body.includes?.users) {
+        for (const u of body.includes.users) includedUsers.set(u.id, u)
+      }
+
+      return body.data.map((tweet): NormalizedTweet => {
+        const quotedRef = tweet.referenced_tweets?.find(r => r.type === 'quoted')
+        let quotedTweet: NormalizedTweet['quotedTweet']
+        if (quotedRef) {
+          const qt = includedTweets.get(quotedRef.id)
+          if (qt) {
+            const qtAuthor = qt.author_id ? includedUsers.get(qt.author_id) : undefined
+            quotedTweet = {
+              text: qt.text,
+              author: qtAuthor ? { username: qtAuthor.username } : undefined,
+            }
+          }
+        }
+
+        return {
+          id: tweet.id,
+          text: tweet.text,
+          createdAt: tweet.created_at,
+          replyCount: tweet.public_metrics?.reply_count,
+          retweetCount: tweet.public_metrics?.retweet_count,
+          likeCount: tweet.public_metrics?.like_count,
+          quotedTweet,
+        }
+      })
+    },
+  }
 }
 
 function createLlmClient(model: string, apiKey: string, customPrompt: string | undefined) {
@@ -96,7 +232,7 @@ Rules:
 If there are no meaningful shared topics across accounts, respond with exactly and only: NO_SHARED_TOPICS`
 
   return {
-    async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
+    async summarize(tweets: NormalizedTweet[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
       const tweetText = tweets
         .map((t, i) => {
           let line = `[${i + 1}] ${t.text}`
@@ -122,7 +258,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
       return { summary: text, links, tweetCount: tweets.length };
     },
 
-    async aggregateTopics(handleTweets: { username: string; tweets: any[] }[], context: string): Promise<string> {
+    async aggregateTopics(handleTweets: { username: string; tweets: NormalizedTweet[] }[], context: string): Promise<string> {
       const groupedText = handleTweets
         .map((h) => {
           const tweets = h.tweets
@@ -203,26 +339,48 @@ function createResendClient(apiKey: string) {
   };
 }
 
-async function fetchUserTweets(client: any, username: string, limit: number) {
+async function resolveUserId(
+  client: ReturnType<typeof createTwitterClient>,
+  username: string,
+  kv: KVNamespace
+): Promise<string | null> {
+  // Check KV cache first
+  const cacheKey = `userId:${username.toLowerCase()}`
+  const cached = await kv.get(cacheKey)
+  if (cached) return cached
+
   const lookup = await client.getUserIdByUsername(username)
   if (!lookup.success || !lookup.userId) {
-    console.log(`[fetchUserTweets] Failed to resolve @${username}: ${lookup.error}`)
-    return []
+    console.log(`[resolveUserId] Failed to resolve @${username}: ${lookup.error}`)
+    return null
   }
-  const result = await client.getUserTweets(lookup.userId, limit)
-  const tweets = result?.tweets || []
 
-  const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
-  return tweets.filter((t: any) => {
-    if (!t.createdAt) return true
-    const ts = new Date(t.createdAt).getTime()
-    return !isNaN(ts) && ts > twentyFourHoursAgo
+  // Cache for 7 days — userIds are stable
+  await kv.put(cacheKey, lookup.userId, { expirationTtl: 7 * 24 * 60 * 60 })
+  return lookup.userId
+}
+
+async function fetchUserTweets(
+  client: ReturnType<typeof createTwitterClient>,
+  username: string,
+  limit: number,
+  kv: KVNamespace,
+  sinceId?: string
+): Promise<NormalizedTweet[]> {
+  const userId = await resolveUserId(client, username, kv)
+  if (!userId) return []
+
+  const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  return client.getUserTweets(userId, {
+    maxResults: limit,
+    sinceId: sinceId || undefined,
+    startTime,
   })
 }
 
 async function runDigest(env: Env) {
   const config = loadConfig();
-  const client = createTwitterClient(env.AUTH_TOKEN, env.CT0);
+  const client = createTwitterClient(env.X_BEARER_TOKEN);
   const prompt = (config.prompt as string | undefined) ?? undefined;
   const llm = createLlmClient(config.llm.model, env.GEMINI_API_KEY, prompt);
   const email = createResendClient(env.RESEND_API_KEY);
@@ -241,18 +399,14 @@ async function runDigest(env: Env) {
     }
 
     console.log(`Processing digest for ${emails.join(', ')}...`);
-    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: any[] }[] = [];
+    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: NormalizedTweet[] }[] = [];
 
     for (const follow of user.follows) {
       const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
       const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
 
       console.log(`Fetching tweets for @${follow.username}...`);
-      let tweets = await fetchUserTweets(client, follow.username, 20);
-
-      if (lastSeenId) {
-        tweets = tweets.filter((t: any) => BigInt(t.id) > BigInt(lastSeenId));
-      }
+      const tweets = await fetchUserTweets(client, follow.username, 20, env.BIRD_WHISPERER, lastSeenId || undefined);
 
       if (tweets.length === 0) {
         console.log(`No new tweets for @${follow.username}`);
@@ -260,7 +414,7 @@ async function runDigest(env: Env) {
       }
 
       // Store the newest tweet ID for next run
-      const newestId = tweets.reduce((max: string, t: any) =>
+      const newestId = tweets.reduce((max: string, t: NormalizedTweet) =>
         BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
       await env.BIRD_WHISPERER.put(lastSeenKey, newestId);
 

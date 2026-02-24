@@ -1,6 +1,3 @@
-cookieSource: chrome
-chromeProfileDir: ~/.config/chromium/Default
-
 users:
   - email:                        # single address or list
       - person@example.com

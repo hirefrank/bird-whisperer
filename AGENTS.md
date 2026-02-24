@@ -18,9 +18,6 @@ pnpm run kv:create
 # Reset all remote KV state (lastSeen + sent flags)
 pnpm run kv:reset
 
-# Sync Twitter cookies from Chrome
-pnpm run sync-cookies
-
 # Manual trigger controls
 pnpm run trigger:enable   # Enable /trigger endpoint
 pnpm run trigger:disable  # Disable /trigger endpoint
@@ -36,9 +33,8 @@ pnpm run trigger          # Execute manual trigger
 - Tests against real external APIs (Twitter, Gemini, Resend)
 
 This ensures dev matches production exactly, but means you need:
-- Valid secrets configured in Cloudflare
-- Cookies synced via `pnpm run sync-cookies`
-- Active API keys for Gemini and Resend
+- Valid secrets configured in Cloudflare (`X_BEARER_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`)
+- Active API keys for X API, Gemini, and Resend
 
 ## Code Style Guidelines
 
@@ -119,16 +115,11 @@ This ensures dev matches production exactly, but means you need:
 ### Project Structure
 ```
 src/
-  index.ts            # Worker entry point, handlers
+  index.ts            # Worker entry point, handlers, X API v2 client
   config.ts           # YAML config loading + validation
-  twitter.ts          # Twitter API client (CLI-based)
-  email.ts            # SMTP client (nodemailer)
-  summarize.ts        # LLM client (Google AI)
   yaml.d.ts           # Type declarations for YAML imports
 scripts/
-  sync-cookies.sh     # Cookie extraction + upload to Cloudflare secrets
   kv-reset.sh         # Delete all keys from remote KV namespace
-  extract-cookies.mjs # Extract cookies from Chrome profile
 ```
 
 ### Key Architectural Patterns
@@ -139,7 +130,7 @@ scripts/
 
 ### Scaling & Performance
 - **15-minute timeout** for scheduled triggers on Cloudflare Workers
-- Each follow requires: 2 Twitter API calls (resolve + fetch) + 1 Gemini API call
+- Each follow requires: 1 X API call (user tweets) + 1 Gemini API call (userId cached in KV after first lookup)
 - Each user requires: 1 email send via Resend
 - **Recommended:** Max ~5 users with ~5 follows each (25 total follows) to stay within timeout
 - Consider queue-based architecture with Durable Objects if scaling beyond this

@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types", "node"]
   },
   "include": ["src/**/*"]
 }
