@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@steipete/sweet-cookie': file:vendor/@steipete/sweet-cookie
-
 importers:
 
   .:
@@ -14,12 +11,6 @@ importers:
       '@ai-sdk/google':
         specifier: ^1.0.0
         version: 1.2.22(zod@3.25.76)
-      '@steipete/bird':
-        specifier: file:vendor/@steipete/bird
-        version: file:vendor/@steipete/bird
-      '@steipete/sweet-cookie':
-        specifier: file:vendor/@steipete/sweet-cookie
-        version: file:vendor/@steipete/sweet-cookie
       ai:
         specifier: ^4.0.0
         version: 4.3.19(react@19.2.4)(zod@3.25.76)
@@ -48,9 +39,6 @@ importers:
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.30
-      '@types/nodemailer':
-        specifier: ^6.4.14
-        version: 6.4.22
       tsx:
         specifier: ^4.6.2
         version: 4.21.0
@@ -653,12 +641,6 @@ packages:
   '@speed-highlight/core@1.2.14':
     resolution: {integrity: sha512-G4ewlBNhUtlLvrJTb88d2mdy2KRijzs4UhnlrOSRT4bmjh/IqNElZa3zkrZ+TC47TwtlDWzVLFADljF1Ijp5hA==}
 
-  '@steipete/bird@file:vendor/@steipete/bird':
-    resolution: {directory: vendor/@steipete/bird, type: directory}
-
-  '@steipete/sweet-cookie@file:vendor/@steipete/sweet-cookie':
-    resolution: {directory: vendor/@steipete/sweet-cookie, type: directory}
-
   '@types/diff-match-patch@1.0.36':
     resolution: {integrity: sha512-xFdR6tkm0MWvBfO8xXCSsinYxHcqkQUlcHeSpMC2ukzOb6lwQAfDmW+Qt0AvlGd8HpsS28qKsB+oPeJn9I39jg==}
 
@@ -667,9 +649,6 @@ packages:
 
   '@types/node@20.19.30':
     resolution: {integrity: sha512-WJtwWJu7UdlvzEAUm484QNg5eAoq5QR08KDNx7g45Usrs2NtOPiX8ugDqmKdXkyL03rBqU5dYNYVQetEpBHq2g==}
-
-  '@types/nodemailer@6.4.22':
-    resolution: {integrity: sha512-HV16KRsW7UyZBITE07B62k8PRAKFqRSFXn1T7vslurVjN761tMDBhk5Lbt17ehyTzK6XcyJnAgUpevrvkcVOzw==}
 
   ai@4.3.19:
     resolution: {integrity: sha512-dIE2bfNpqHN3r6IINp9znguYdhIOheKW2LDigAMrgt/upT3B8eBGPSCblENvaZGoq+hxaN9fSMzjWpbqloP+7Q==}
@@ -690,10 +669,6 @@ packages:
   chalk@5.6.2:
     resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
     engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
-
-  commander@14.0.3:
-    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
-    engines: {node: '>=20'}
 
   cookie@1.1.1:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
@@ -772,11 +747,6 @@ packages:
 
   json-schema@0.4.0:
     resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
-
-  json5@2.2.3:
-    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
-    engines: {node: '>=6'}
-    hasBin: true
 
   jsondiffpatch@0.6.0:
     resolution: {integrity: sha512-3QItJOXp2AP1uv7waBkao5nCvhEv+QmJAd38Ybq7wNI74Q+BBmnLn4EDKz6yI9xGAIQoUF87qHt+kc1IVxB4zQ==}
@@ -1303,14 +1273,6 @@ snapshots:
 
   '@speed-highlight/core@1.2.14': {}
 
-  '@steipete/bird@file:vendor/@steipete/bird':
-    dependencies:
-      commander: 14.0.3
-      json5: 2.2.3
-      kleur: 4.1.5
-
-  '@steipete/sweet-cookie@file:vendor/@steipete/sweet-cookie': {}
-
   '@types/diff-match-patch@1.0.36': {}
 
   '@types/js-yaml@4.0.9': {}
@@ -1318,10 +1280,6 @@ snapshots:
   '@types/node@20.19.30':
     dependencies:
       undici-types: 6.21.0
-
-  '@types/nodemailer@6.4.22':
-    dependencies:
-      '@types/node': 20.19.30
 
   ai@4.3.19(react@19.2.4)(zod@3.25.76):
     dependencies:
@@ -1340,8 +1298,6 @@ snapshots:
   blake3-wasm@2.1.5: {}
 
   chalk@5.6.2: {}
-
-  commander@14.0.3: {}
 
   cookie@1.1.1: {}
 
@@ -1464,8 +1420,6 @@ snapshots:
       argparse: 2.0.1
 
   json-schema@0.4.0: {}
-
-  json5@2.2.3: {}
 
   jsondiffpatch@0.6.0:
     dependencies:

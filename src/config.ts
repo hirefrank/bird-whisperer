@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import { z } from 'zod';
-import configYaml from '../config.yaml';
+import bundledConfigYaml from '../config.yaml';
 
 const FollowSchema = z.object({
   username: z.string(),
@@ -25,10 +25,19 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type User = Config['users'][number];
 export type Follow = User['follows'][number];
 
-export function loadConfig(): Config {
-  const parsed = yaml.load(configYaml) as Record<string, unknown>;
-  if (parsed.prompt === null) {
-    parsed.prompt = undefined;
+export function loadConfig(configYamlOverride?: string): Config {
+  const configSource = configYamlOverride?.trim() ? configYamlOverride : bundledConfigYaml
+  const parsed = yaml.load(configSource)
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Config YAML must parse to an object')
   }
-  return ConfigSchema.parse(parsed);
+
+  const config = parsed as Record<string, unknown>
+
+  if (config.prompt === null) {
+    config.prompt = undefined;
+  }
+
+  return ConfigSchema.parse(config);
 }

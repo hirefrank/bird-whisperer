@@ -1,14 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NSID=$(grep -A5 '^\[\[kv_namespaces\]\]' wrangler.toml | grep '^id' | sed 's/.*= *"\(.*\)"/\1/')
+CONFIG_FILE=${WRANGLER_CONFIG:-}
+if [ -z "$CONFIG_FILE" ]; then
+  if [ -f "wrangler.local.toml" ]; then
+    CONFIG_FILE="wrangler.local.toml"
+  else
+    CONFIG_FILE="wrangler.toml"
+  fi
+fi
 
-if [ -z "$NSID" ]; then
-  echo "Error: Could not find KV namespace ID in wrangler.toml"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Error: Wrangler config file not found: $CONFIG_FILE"
   exit 1
 fi
 
-echo "Resetting KV namespace: $NSID"
+NSID=$(grep -A5 '^\[\[kv_namespaces\]\]' "$CONFIG_FILE" | grep '^id' | sed 's/.*= *"\(.*\)"/\1/')
+
+if [ -z "$NSID" ]; then
+  echo "Error: Could not find KV namespace ID in $CONFIG_FILE"
+  exit 1
+fi
+
+if [ "$NSID" = "your-kv-namespace-id" ]; then
+  echo "Error: Replace placeholder KV namespace ID in $CONFIG_FILE first"
+  exit 1
+fi
+
+echo "Resetting KV namespace: $NSID (from $CONFIG_FILE)"
 
 keys=$(wrangler kv key list --namespace-id="$NSID" --remote | jq -r '.[].name')
 

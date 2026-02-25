@@ -1,7 +1,8 @@
-# Copy to wrangler.local.toml for personal overrides.
-# The committed wrangler.toml stays template-safe for one-click deploy.
-
 #:schema node_modules/wrangler/config-schema.json
+# Deploy to Cloudflare template config.
+# Keep this file generic for one-click deploy.
+# Put personal overrides in wrangler.local.toml (gitignored).
+
 name = "bird-whisperer"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"

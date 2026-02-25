@@ -9,8 +9,10 @@ dist/
 .wrangler/
 
 # Local config (personal)
-config.yaml
-wrangler.toml
+wrangler.local.toml
+config.local.yaml
+.dev.vars
+.env
 
 # Editor/IDE
 .idea/

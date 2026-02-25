@@ -1,10 +1,35 @@
+interface CloudflareEmailMessage {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  cc?: string | string[];
+  bcc?: string | string[];
+  replyTo?: string;
+  headers?: Record<string, string>;
+}
+
+interface CloudflareEmailResponse {
+  messageId: string;
+  success: boolean;
+}
+
+interface CloudflareEmailBinding {
+  send(message: CloudflareEmailMessage): Promise<CloudflareEmailResponse>;
+}
+
 export interface Env {
   BIRD_WHISPERER: KVNamespace;
   ASSETS: Fetcher;
-  AUTH_TOKEN: string;
-  CT0: string;
+  X_BEARER_TOKEN: string;
   GEMINI_API_KEY: string;
-  RESEND_API_KEY: string;
+  RESEND_API_KEY?: string;
+  EMAIL_PROVIDER?: string;
+  EMAIL_FROM?: string;
+  EMAIL_REPLY_TO?: string;
+  EMAIL?: CloudflareEmailBinding;
+  CONFIG_YAML?: string;
   ENABLE_MANUAL_TRIGGER?: string;
 }
 
@@ -12,6 +37,13 @@ import { loadConfig, type Config } from './config'
 import { marked } from 'marked'
 
 const TWITTER_BLUE = '#1da1f2'
+const DEFAULT_FROM = 'Bird Whisperer <noreply@notifications.hirefrank.com>'
+
+type EmailProvider = 'cloudflare' | 'resend'
+
+interface EmailClient {
+  send(to: string, subject: string, html: string): Promise<void>
+}
 
 function fillPromptTemplate(template: string, values: Record<string, string>): string {
   return template.replace(/\{([A-Z_]+)\}/g, (match, key) => {
@@ -31,9 +63,179 @@ function linkFollowedMentionsInHtml(html: string, followedHandles: Set<string>):
   })
 }
 
-function createTwitterClient(authToken: string, ct0: string) {
-  const { TwitterClient } = require('@steipete/bird');
-  return new TwitterClient({ cookies: { authToken, ct0 } });
+// X API v2 response types
+interface XApiTweet {
+  id: string
+  text: string
+  author_id?: string
+  created_at?: string
+  public_metrics?: {
+    retweet_count: number
+    reply_count: number
+    like_count: number
+    quote_count: number
+  }
+  referenced_tweets?: Array<{
+    type: 'retweeted' | 'quoted' | 'replied_to'
+    id: string
+  }>
+}
+
+interface XApiUser {
+  id: string
+  username: string
+  name: string
+}
+
+interface XApiProblem {
+  title?: string
+  detail?: string
+  message?: string
+  type?: string
+  status?: number
+}
+
+interface XApiTweetsResponse {
+  data?: XApiTweet[]
+  includes?: {
+    tweets?: XApiTweet[]
+    users?: XApiUser[]
+  }
+  meta?: {
+    result_count: number
+    next_token?: string
+    newest_id?: string
+    oldest_id?: string
+  }
+  errors?: XApiProblem[]
+}
+
+interface XApiUserResponse {
+  data?: {
+    id: string
+    username: string
+    name: string
+  }
+  errors?: XApiProblem[]
+}
+
+function formatXApiErrors(errors: XApiProblem[] | undefined): string {
+  if (!errors?.length) return 'Unknown X API error'
+
+  return errors
+    .map((problem) => problem.detail || problem.title || problem.message || 'Unknown X API error')
+    .join(' | ')
+}
+
+interface NormalizedTweet {
+  id: string
+  text: string
+  createdAt?: string
+  replyCount?: number
+  retweetCount?: number
+  likeCount?: number
+  quotedTweet?: {
+    text: string
+    author?: { username: string }
+  }
+}
+
+function createTwitterClient(bearerToken: string) {
+  const baseUrl = 'https://api.x.com/2'
+  const headers = { Authorization: `Bearer ${bearerToken}` }
+
+  return {
+    async getUserIdByUsername(username: string): Promise<{ success: boolean; userId?: string; error?: string }> {
+      try {
+        const resp = await fetch(`${baseUrl}/users/by/username/${encodeURIComponent(username)}`, { headers })
+        if (!resp.ok) {
+          const body = await resp.text()
+          return { success: false, error: `HTTP ${resp.status}: ${body}` }
+        }
+
+        const body = await resp.json() as XApiUserResponse
+        if (body.errors?.length) {
+          return { success: false, error: formatXApiErrors(body.errors) }
+        }
+        if (!body.data?.id) {
+          return { success: false, error: 'User not found' }
+        }
+        return { success: true, userId: body.data.id }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[getUserIdByUsername] Failed to resolve @${username}: ${message}`)
+        return { success: false, error: `Request failed: ${message}` }
+      }
+    },
+
+    async getUserTweets(
+      userId: string,
+      options: { maxResults?: number; sinceId?: string; startTime?: string } = {}
+    ): Promise<NormalizedTweet[]> {
+      try {
+        const params = new URLSearchParams({
+          max_results: String(options.maxResults || 20),
+          'tweet.fields': 'created_at,public_metrics,referenced_tweets,author_id',
+          expansions: 'referenced_tweets.id,referenced_tweets.id.author_id',
+          'user.fields': 'username,name',
+        })
+        if (options.sinceId) params.set('since_id', options.sinceId)
+        if (options.startTime) params.set('start_time', options.startTime)
+
+        const resp = await fetch(`${baseUrl}/users/${encodeURIComponent(userId)}/tweets?${params}`, { headers })
+        if (!resp.ok) {
+          const body = await resp.text()
+          console.error(`Failed to fetch tweets for user ${userId}: HTTP ${resp.status}: ${body}`)
+          return []
+        }
+
+        const body = await resp.json() as XApiTweetsResponse
+        if (body.errors?.length) {
+          console.error(`[getUserTweets] X API returned errors for user ${userId}: ${formatXApiErrors(body.errors)}`)
+        }
+        if (!body.data) return []
+
+        // Build lookup maps for included tweets and users
+        const includedTweets = new Map<string, XApiTweet>()
+        const includedUsers = new Map<string, XApiUser>()
+        if (body.includes?.tweets) {
+          for (const t of body.includes.tweets) includedTweets.set(t.id, t)
+        }
+        if (body.includes?.users) {
+          for (const u of body.includes.users) includedUsers.set(u.id, u)
+        }
+
+        return body.data.map((tweet): NormalizedTweet => {
+          const quotedRef = tweet.referenced_tweets?.find(r => r.type === 'quoted')
+          let quotedTweet: NormalizedTweet['quotedTweet']
+          if (quotedRef) {
+            const qt = includedTweets.get(quotedRef.id)
+            if (qt) {
+              const qtAuthor = qt.author_id ? includedUsers.get(qt.author_id) : undefined
+              quotedTweet = {
+                text: qt.text,
+                author: qtAuthor ? { username: qtAuthor.username } : undefined,
+              }
+            }
+          }
+
+          return {
+            id: tweet.id,
+            text: tweet.text,
+            createdAt: tweet.created_at,
+            replyCount: tweet.public_metrics?.reply_count,
+            retweetCount: tweet.public_metrics?.retweet_count,
+            likeCount: tweet.public_metrics?.like_count,
+            quotedTweet,
+          }
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[getUserTweets] Failed to fetch tweets for user ${userId}: ${message}`)
+        return []
+      }
+    },
+  }
 }
 
 function createLlmClient(model: string, apiKey: string, customPrompt: string | undefined) {
@@ -96,7 +298,7 @@ Rules:
 If there are no meaningful shared topics across accounts, respond with exactly and only: NO_SHARED_TOPICS`
 
   return {
-    async summarize(tweets: any[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
+    async summarize(tweets: NormalizedTweet[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
       const tweetText = tweets
         .map((t, i) => {
           let line = `[${i + 1}] ${t.text}`
@@ -122,7 +324,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
       return { summary: text, links, tweetCount: tweets.length };
     },
 
-    async aggregateTopics(handleTweets: { username: string; tweets: any[] }[], context: string): Promise<string> {
+    async aggregateTopics(handleTweets: { username: string; tweets: NormalizedTweet[] }[], context: string): Promise<string> {
       const groupedText = handleTweets
         .map((h) => {
           const tweets = h.tweets
@@ -157,7 +359,59 @@ If there are no meaningful shared topics across accounts, respond with exactly a
   };
 }
 
-function createResendClient(apiKey: string) {
+function getEmailProvider(env: Env): EmailProvider {
+  const configuredProvider = env.EMAIL_PROVIDER?.trim().toLowerCase()
+  if (configuredProvider === 'cloudflare' || configuredProvider === 'resend') {
+    return configuredProvider
+  }
+
+  if (configuredProvider) {
+    throw new Error(`Unsupported EMAIL_PROVIDER '${env.EMAIL_PROVIDER}'. Expected 'resend' or 'cloudflare'.`)
+  }
+
+  if (env.RESEND_API_KEY) {
+    return 'resend'
+  }
+
+  if (env.EMAIL) {
+    return 'cloudflare'
+  }
+
+  throw new Error('No email provider configured. Set RESEND_API_KEY or bind EMAIL (Cloudflare Email Service).')
+}
+
+function createCloudflareEmailClient(
+  emailBinding: CloudflareEmailBinding,
+  from: string,
+  replyTo: string | undefined,
+): EmailClient {
+  return {
+    async send(to: string, subject: string, html: string): Promise<void> {
+      const payload: CloudflareEmailMessage = {
+        from,
+        to,
+        subject,
+        html,
+      }
+
+      if (replyTo) {
+        payload.replyTo = replyTo
+      }
+
+      try {
+        const result = await emailBinding.send(payload)
+        if (!result.success) {
+          throw new Error('Cloudflare Email Service returned success=false')
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new Error(`Cloudflare Email Service error: ${errorMessage}`)
+      }
+    },
+  }
+}
+
+function createResendClient(apiKey: string, from: string, replyTo: string | undefined): EmailClient {
   const { Resend } = require('resend');
 
   const resend = new Resend(apiKey);
@@ -174,12 +428,21 @@ function createResendClient(apiKey: string) {
 
       const maxAttempts = 3;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const { error } = await resend.emails.send({
-          from: 'Bird Whisperer <noreply@notifications.hirefrank.com>',
+        const payload: {
+          from: string
+          to: string
+          subject: string
+          html: string
+          replyTo?: string
+        } = {
+          from,
           to,
           subject,
           html,
-        });
+          ...(replyTo ? { replyTo } : {}),
+        }
+
+        const { error } = await resend.emails.send(payload);
 
         if (!error) {
           lastSendTime = Date.now();
@@ -187,9 +450,10 @@ function createResendClient(apiKey: string) {
         }
 
         // Resend returns "Too Many Requests" on 429; also check statusCode if available
+        const resendError = error as { statusCode?: number; message?: string }
         const isRateLimit =
-          (error as any).statusCode === 429 ||
-          error.message?.toLowerCase().includes('too many requests');
+          resendError.statusCode === 429 ||
+          resendError.message?.toLowerCase().includes('too many requests') === true
         if (isRateLimit && attempt < maxAttempts - 1) {
           const backoff = 1000 * Math.pow(2, attempt); // 1s, 2s
           console.log(`Rate limited by Resend, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxAttempts})...`);
@@ -197,35 +461,79 @@ function createResendClient(apiKey: string) {
           continue;
         }
 
-        throw new Error(`Resend error: ${error.message}`);
+        throw new Error(`Resend error: ${resendError.message || 'Unknown error'}`);
       }
     },
   };
 }
 
-async function fetchUserTweets(client: any, username: string, limit: number) {
+function createEmailClient(env: Env, provider: EmailProvider): EmailClient {
+  const from = env.EMAIL_FROM || DEFAULT_FROM
+  const replyTo = env.EMAIL_REPLY_TO
+
+  if (provider === 'cloudflare') {
+    if (!env.EMAIL) {
+      throw new Error("EMAIL binding is required when EMAIL_PROVIDER is 'cloudflare'")
+    }
+
+    return createCloudflareEmailClient(env.EMAIL, from, replyTo)
+  }
+
+  if (!env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is required when EMAIL_PROVIDER is 'resend'")
+  }
+
+  return createResendClient(env.RESEND_API_KEY, from, replyTo)
+}
+
+async function resolveUserId(
+  client: ReturnType<typeof createTwitterClient>,
+  username: string,
+  kv: KVNamespace
+): Promise<string | null> {
+  // Check KV cache first
+  const cacheKey = `userId:${username.toLowerCase()}`
+  const cached = await kv.get(cacheKey)
+  if (cached) return cached
+
   const lookup = await client.getUserIdByUsername(username)
   if (!lookup.success || !lookup.userId) {
-    console.log(`[fetchUserTweets] Failed to resolve @${username}: ${lookup.error}`)
-    return []
+    console.log(`[resolveUserId] Failed to resolve @${username}: ${lookup.error}`)
+    return null
   }
-  const result = await client.getUserTweets(lookup.userId, limit)
-  const tweets = result?.tweets || []
 
-  const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
-  return tweets.filter((t: any) => {
-    if (!t.createdAt) return true
-    const ts = new Date(t.createdAt).getTime()
-    return !isNaN(ts) && ts > twentyFourHoursAgo
+  // Cache for 7 days — userIds are stable
+  await kv.put(cacheKey, lookup.userId, { expirationTtl: 7 * 24 * 60 * 60 })
+  return lookup.userId
+}
+
+async function fetchUserTweets(
+  client: ReturnType<typeof createTwitterClient>,
+  username: string,
+  limit: number,
+  kv: KVNamespace,
+  sinceId?: string
+): Promise<NormalizedTweet[]> {
+  const userId = await resolveUserId(client, username, kv)
+  if (!userId) return []
+
+  const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  return client.getUserTweets(userId, {
+    maxResults: limit,
+    sinceId: sinceId || undefined,
+    startTime,
   })
 }
 
 async function runDigest(env: Env) {
-  const config = loadConfig();
-  const client = createTwitterClient(env.AUTH_TOKEN, env.CT0);
+  const config = loadConfig(env.CONFIG_YAML);
+  const client = createTwitterClient(env.X_BEARER_TOKEN);
   const prompt = (config.prompt as string | undefined) ?? undefined;
   const llm = createLlmClient(config.llm.model, env.GEMINI_API_KEY, prompt);
-  const email = createResendClient(env.RESEND_API_KEY);
+  const emailProvider = getEmailProvider(env)
+  const email = createEmailClient(env, emailProvider)
+
+  console.log(`Using email provider: ${emailProvider}`)
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -241,18 +549,14 @@ async function runDigest(env: Env) {
     }
 
     console.log(`Processing digest for ${emails.join(', ')}...`);
-    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: any[] }[] = [];
+    const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: NormalizedTweet[] }[] = [];
 
     for (const follow of user.follows) {
       const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
       const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
 
       console.log(`Fetching tweets for @${follow.username}...`);
-      let tweets = await fetchUserTweets(client, follow.username, 20);
-
-      if (lastSeenId) {
-        tweets = tweets.filter((t: any) => BigInt(t.id) > BigInt(lastSeenId));
-      }
+      const tweets = await fetchUserTweets(client, follow.username, 20, env.BIRD_WHISPERER, lastSeenId || undefined);
 
       if (tweets.length === 0) {
         console.log(`No new tweets for @${follow.username}`);
@@ -260,7 +564,7 @@ async function runDigest(env: Env) {
       }
 
       // Store the newest tweet ID for next run
-      const newestId = tweets.reduce((max: string, t: any) =>
+      const newestId = tweets.reduce((max: string, t: NormalizedTweet) =>
         BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
       await env.BIRD_WHISPERER.put(lastSeenKey, newestId);
 
