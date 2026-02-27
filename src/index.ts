@@ -1,24 +1,3 @@
-interface CloudflareEmailMessage {
-  from: string;
-  to: string | string[];
-  subject: string;
-  html?: string;
-  text?: string;
-  cc?: string | string[];
-  bcc?: string | string[];
-  replyTo?: string;
-  headers?: Record<string, string>;
-}
-
-interface CloudflareEmailResponse {
-  messageId: string;
-  success: boolean;
-}
-
-interface CloudflareEmailBinding {
-  send(message: CloudflareEmailMessage): Promise<CloudflareEmailResponse>;
-}
-
 export interface Env {
   BIRD_WHISPERER: KVNamespace;
   ASSETS: Fetcher;
@@ -28,7 +7,7 @@ export interface Env {
   EMAIL_PROVIDER?: string;
   EMAIL_FROM?: string;
   EMAIL_REPLY_TO?: string;
-  EMAIL?: CloudflareEmailBinding;
+  EMAIL?: SendEmail;
   CONFIG_YAML?: string;
   ENABLE_MANUAL_TRIGGER?: string;
 }
@@ -381,28 +360,22 @@ function getEmailProvider(env: Env): EmailProvider {
 }
 
 function createCloudflareEmailClient(
-  emailBinding: CloudflareEmailBinding,
+  emailBinding: SendEmail,
   from: string,
   replyTo: string | undefined,
 ): EmailClient {
   return {
     async send(to: string, subject: string, html: string): Promise<void> {
-      const payload: CloudflareEmailMessage = {
-        from,
-        to,
-        subject,
-        html,
-      }
-
-      if (replyTo) {
-        payload.replyTo = replyTo
-      }
-
       try {
-        const result = await emailBinding.send(payload)
-        if (!result.success) {
-          throw new Error('Cloudflare Email Service returned success=false')
-        }
+        // SendEmail.send() throws on failure; EmailSendResult only has messageId
+        const result = await emailBinding.send({
+          from,
+          to,
+          subject,
+          html,
+          ...(replyTo ? { replyTo } : {}),
+        })
+        console.log(`Email sent via Cloudflare, messageId: ${result.messageId}`)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         throw new Error(`Cloudflare Email Service error: ${errorMessage}`)
