@@ -523,6 +523,7 @@ async function runDigest(env: Env) {
 
     console.log(`Processing digest for ${emails.join(', ')}...`);
     const handleSummaries: { username: string; summary: string; links: string[]; tweetCount: number; tweets: NormalizedTweet[] }[] = [];
+    const pendingLastSeenUpdates: Array<{ key: string; value: string }> = []
 
     for (const follow of user.follows) {
       const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
@@ -539,7 +540,7 @@ async function runDigest(env: Env) {
       // Store the newest tweet ID for next run
       const newestId = tweets.reduce((max: string, t: NormalizedTweet) =>
         BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
-      await env.BIRD_WHISPERER.put(lastSeenKey, newestId);
+      pendingLastSeenUpdates.push({ key: lastSeenKey, value: newestId })
 
       console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`)
       const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username)
@@ -625,7 +626,18 @@ async function runDigest(env: Env) {
       await email.send(recipient, subject, html);
       console.log(`Digest sent to ${recipient}`);
     }
+
+    // Mark as sent first, then checkpoint lastSeen values.
+    // This avoids consuming tweets if email send fails mid-run.
     await env.BIRD_WHISPERER.put(sentKey, new Date().toISOString());
+
+    for (const update of pendingLastSeenUpdates) {
+      try {
+        await env.BIRD_WHISPERER.put(update.key, update.value)
+      } catch (error) {
+        console.error(`Failed to persist lastSeen checkpoint for ${update.key}:`, error)
+      }
+    }
   }
 }
 
