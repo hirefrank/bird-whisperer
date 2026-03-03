@@ -4,15 +4,47 @@ Daily X digest delivered to your inbox. Follow specific accounts, summarize what
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/hirefrank/bird-whisperer)
 
+![Bird Whisperer screenshot](docs/bird-whisperer-screenshot.png)
+
+## Required API credentials
+
+Bird Whisperer **requires** an X (Twitter) API bearer token. Without it, the Worker cannot fetch tweets and your digest will be empty or skipped.
+
+Before deploy, make sure you have:
+
+- `X_BEARER_TOKEN` from X API v2 (**required**)
+- `GEMINI_API_KEY` for summaries (**required**)
+- One email provider (`RESEND_API_KEY` or Cloudflare Email Service)
+
+## Prerequisites
+
+- Cloudflare account with Workers enabled
+- X API v2 access and a valid bearer token
+- Gemini API key
+- Node.js 20+ and pnpm
+- Wrangler CLI authenticated (`wrangler login`)
+
 ## One-Click Deploy
 
 1. Click the **Deploy to Cloudflare Workers** button above.
-2. After deploy, set required secrets:
+2. After deploy, set required secrets (**do not skip `X_BEARER_TOKEN`**):
 
 ```bash
 wrangler secret put X_BEARER_TOKEN
 wrangler secret put GEMINI_API_KEY
 ```
+
+If you're setting these up incrementally, set `X_BEARER_TOKEN` first.
+
+Optional quick token check (recommended):
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer <X_BEARER_TOKEN>" \
+  "https://api.x.com/2/users/by/username/x"
+```
+
+If the token is valid, you should get a JSON response with `data.id`.
 
 3. Choose an email provider:
 
@@ -43,6 +75,29 @@ wrangler secret put ENABLE_MANUAL_TRIGGER
 # value: true
 
 WORKER_URL=https://your-worker.workers.dev pnpm run trigger
+```
+
+`/trigger` is publicly reachable while `ENABLE_MANUAL_TRIGGER=true`, so disable it after testing.
+
+## Manual CLI setup (no one-click)
+
+If you prefer fully manual setup, use this path:
+
+```bash
+pnpm install
+wrangler login
+cp wrangler.example.toml wrangler.local.toml
+pnpm run kv:create
+```
+
+Then copy the KV namespace ID from `pnpm run kv:create` output into `wrangler.local.toml` (`[[kv_namespaces]].id`), set your secrets against that config, and deploy:
+
+```bash
+wrangler secret put X_BEARER_TOKEN --config wrangler.local.toml
+wrangler secret put GEMINI_API_KEY --config wrangler.local.toml
+# plus either RESEND_API_KEY or Cloudflare Email Service binding
+
+pnpm run deploy:local
 ```
 
 ## Architecture
@@ -108,6 +163,7 @@ Sender defaults:
 
 - Default from address: `Bird Whisperer <noreply@notifications.hirefrank.com>`
 - Optional overrides: `EMAIL_FROM`, `EMAIL_REPLY_TO`
+- `EMAIL_FROM` should be a sender/domain verified with your selected provider, or delivery may fail.
 
 ## Local Overrides (Production Safety)
 
@@ -158,6 +214,17 @@ WORKER_URL=https://your-worker.workers.dev pnpm run trigger
 ```
 
 `kv:reset` uses `wrangler.local.toml` automatically when it exists.
+
+## First-run smoke test
+
+```bash
+pnpm run trigger:enable
+WORKER_URL=https://your-worker.workers.dev pnpm run trigger
+wrangler tail
+pnpm run trigger:disable
+```
+
+The default schedule in `wrangler.toml` is `0 13 * * *` (13:00 UTC). Adjust the cron if you want a different local send time.
 
 ## Scaling notes
 
