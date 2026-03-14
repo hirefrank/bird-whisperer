@@ -298,6 +298,8 @@ If there are no meaningful shared topics across accounts, respond with exactly a
           TWEETS: tweetText,
         }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
+        abortSignal: AbortSignal.timeout(60_000),
+        maxTokens: 500,
       });
 
       return { summary: text, links, tweetCount: tweets.length };
@@ -327,6 +329,8 @@ If there are no meaningful shared topics across accounts, respond with exactly a
           GROUPED_TWEETS: groupedText,
         }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
+        abortSignal: AbortSignal.timeout(60_000),
+        maxTokens: 500,
       })
 
       if (text.trim() === 'NO_SHARED_TOPICS') {
@@ -526,36 +530,41 @@ async function runDigest(env: Env) {
     const pendingLastSeenUpdates: Array<{ key: string; value: string }> = []
 
     for (const follow of user.follows) {
-      const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
-      const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
+      try {
+        const lastSeenKey = `lastSeen:${primaryEmail}:${follow.username}`;
+        const lastSeenId = await env.BIRD_WHISPERER.get(lastSeenKey);
 
-      console.log(`Fetching tweets for @${follow.username}...`);
-      const tweets = await fetchUserTweets(client, follow.username, 20, env.BIRD_WHISPERER, lastSeenId || undefined);
+        console.log(`Fetching tweets for @${follow.username}...`);
+        const tweets = await fetchUserTweets(client, follow.username, 20, env.BIRD_WHISPERER, lastSeenId || undefined);
 
-      if (tweets.length === 0) {
-        console.log(`No new tweets for @${follow.username}`);
-        continue;
-      }
-
-      // Store the newest tweet ID for next run
-      const newestId = tweets.reduce((max: string, t: NormalizedTweet) =>
-        BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
-      pendingLastSeenUpdates.push({ key: lastSeenKey, value: newestId })
-
-      console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`)
-      const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username)
-
-      // Convert markdown summary to HTML, then replace [N] references with linked footnotes
-      let summaryHtml = await marked.parse(summary)
-      summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
-        const idx = parseInt(num, 10) - 1
-        if (idx >= 0 && idx < links.length) {
-          return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
+        if (tweets.length === 0) {
+          console.log(`No new tweets for @${follow.username}`);
+          continue;
         }
-        return match
-      })
 
-      handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount, tweets })
+        // Store the newest tweet ID for next run
+        const newestId = tweets.reduce((max: string, t: NormalizedTweet) =>
+          BigInt(t.id) > BigInt(max) ? t.id : max, tweets[0].id);
+        pendingLastSeenUpdates.push({ key: lastSeenKey, value: newestId })
+
+        console.log(`Summarizing @${follow.username} (${tweets.length} new tweets)...`)
+        const { summary, links, tweetCount } = await llm.summarize(tweets, user.context, follow.username)
+
+        // Convert markdown summary to HTML, then replace [N] references with linked footnotes
+        let summaryHtml = await marked.parse(summary)
+        summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
+          const idx = parseInt(num, 10) - 1
+          if (idx >= 0 && idx < links.length) {
+            return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
+          }
+          return match
+        })
+
+        handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount, tweets })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(`Failed to process @${follow.username}: ${message}`)
+      }
     }
 
     if (handleSummaries.length === 0) {
