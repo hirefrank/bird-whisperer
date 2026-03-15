@@ -299,7 +299,9 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
-        maxTokens: 500,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 1024 } },
+        },
       });
 
       return { summary: text, links, tweetCount: tweets.length };
@@ -330,7 +332,9 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
-        maxTokens: 500,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 1024 } },
+        },
       })
 
       if (text.trim() === 'NO_SHARED_TOPICS') {
