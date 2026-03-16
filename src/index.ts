@@ -616,8 +616,8 @@ async function runDigest(env: Env) {
 
         ${trendingSection}
 
-        ${handleSummaries.map((h) => `
-          <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
+        ${handleSummaries.map((h, i) => `
+          <div style="margin-bottom: 30px; padding-bottom: 20px;${i < handleSummaries.length - 1 ? ' border-bottom: 1px solid #eee;' : ''}">
             <h2 style="margin: 0 0 10px 0;">
               <a href="https://x.com/${h.username}" style="color: ${TWITTER_BLUE}; text-decoration: none;">@${h.username}</a>
             </h2>
