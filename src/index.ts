@@ -300,7 +300,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 1024 } },
+          google: { thinkingConfig: { thinkingLevel: 'minimal' } },
         },
       });
 
@@ -333,7 +333,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 1024 } },
+          google: { thinkingConfig: { thinkingLevel: 'minimal' } },
         },
       })
 

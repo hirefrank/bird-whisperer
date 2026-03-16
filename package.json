@@ -42,8 +42,8 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/google": "^1.0.0",
-    "ai": "^4.0.0",
+    "@ai-sdk/google": "^3.0.43",
+    "ai": "^6.0.116",
     "hono": "^4.0.0",
     "js-yaml": "^4.1.0",
     "marked": "^17.0.1",
