@@ -220,6 +220,12 @@ function createTwitterClient(bearerToken: string) {
 function createLlmClient(model: string, apiKey: string, customPrompt: string | undefined) {
   const { createGoogleGenerativeAI } = require('@ai-sdk/google');
   const { generateText } = require('ai');
+  const lowVarianceGoogleOptions = {
+    temperature: 0.2,
+    topK: 20,
+    topP: 0.8,
+    thinkingConfig: { thinkingLevel: 'minimal' as const },
+  }
 
   const google = createGoogleGenerativeAI({ apiKey });
   const prompt = customPrompt || `You are writing a section of a personalized newsletter digest about a Twitter user's recent activity.
@@ -300,7 +306,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
         providerOptions: {
-          google: { thinkingConfig: { thinkingLevel: 'minimal' } },
+          google: lowVarianceGoogleOptions,
         },
       });
 
@@ -333,7 +339,7 @@ If there are no meaningful shared topics across accounts, respond with exactly a
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
         providerOptions: {
-          google: { thinkingConfig: { thinkingLevel: 'minimal' } },
+          google: lowVarianceGoogleOptions,
         },
       })
 
@@ -556,6 +562,20 @@ async function runDigest(env: Env) {
 
         // Convert markdown summary to HTML, then replace [N] references with linked footnotes
         let summaryHtml = await marked.parse(summary)
+        summaryHtml = summaryHtml.replace(/\[((?:\d+\s*,\s*)+\d+)\]/g, (match, refs) => {
+          const linkedRefs = refs
+            .split(/\s*,\s*/)
+            .map((num) => {
+              const idx = parseInt(num, 10) - 1
+              if (idx >= 0 && idx < links.length) {
+                return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
+              }
+              return `[${num}]`
+            })
+            .join(', ')
+
+          return linkedRefs || match
+        })
         summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
           const idx = parseInt(num, 10) - 1
           if (idx >= 0 && idx < links.length) {
