@@ -562,10 +562,10 @@ async function runDigest(env: Env) {
 
         // Convert markdown summary to HTML, then replace [N] references with linked footnotes
         let summaryHtml = await marked.parse(summary)
-        summaryHtml = summaryHtml.replace(/\[((?:\d+\s*,\s*)+\d+)\]/g, (match, refs) => {
+        summaryHtml = summaryHtml.replace(/\[((?:\d+\s*,\s*)*\d+)\]/g, (match, refs) => {
           const linkedRefs = refs
             .split(/\s*,\s*/)
-            .map((num) => {
+            .map((num: string) => {
               const idx = parseInt(num, 10) - 1
               if (idx >= 0 && idx < links.length) {
                 return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
@@ -575,13 +575,6 @@ async function runDigest(env: Env) {
             .join(', ')
 
           return linkedRefs || match
-        })
-        summaryHtml = summaryHtml.replace(/\[(\d+)\]/g, (match, num) => {
-          const idx = parseInt(num, 10) - 1
-          if (idx >= 0 && idx < links.length) {
-            return `<a href="${links[idx]}" style="color: ${TWITTER_BLUE}; text-decoration: none; font-weight: 600;">[${num}]</a>`
-          }
-          return match
         })
 
         handleSummaries.push({ username: follow.username, summary: summaryHtml, links, tweetCount, tweets })
