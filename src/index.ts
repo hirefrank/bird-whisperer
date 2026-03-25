@@ -266,6 +266,8 @@ Here are recent tweets grouped by account:
 
 Identify topics, events, or conversations that 2 or more accounts are discussing. A shared topic means multiple people are reacting to, commenting on, or referencing the same underlying thing — a viral tweet, news event, product launch, shared link, etc.
 
+A shared topic must be concrete. It should point to the same specific thing, not just the same broad area.
+
 If you find shared topics, write a brief trending section. For each shared topic:
 - Bold the topic name
 - Mention which @handles are discussing it (use @username format)
@@ -275,6 +277,11 @@ If you find shared topics, write a brief trending section. For each shared topic
 Rules:
 - Only surface topics that genuinely appear across 2+ accounts. Don't force connections.
 - If accounts are directly replying to or quoting each other about the same thing, that's a strong signal.
+- Do NOT merge adjacent but distinct topics into one umbrella theme. If one account is talking about a QMD wrapper and another is talking about a Kanban tool, that is not a shared topic unless they are reacting to the same post, launch, or conversation.
+- Do NOT use broad labels like "developer tooling," "AI," "commerce," or "automation" unless the shared topic is one concrete thing inside that category.
+- Prefer topic names that would make sense as a specific headline, like "Shopify in ChatGPT," not vague buckets.
+- Only mention handles that are clearly part of that exact topic.
+- If you are unsure whether two accounts are discussing the same underlying thing, leave it out.
 - 1-3 shared topics max. Quality over quantity.
 - Same style rules as individual summaries: plain, direct, no filler words.
 - Do NOT use [N] tweet references — this is a high-level cross-account view.
@@ -504,11 +511,12 @@ async function fetchUserTweets(
   const userId = await resolveUserId(client, username, kv)
   if (!userId) return []
 
-  const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   return client.getUserTweets(userId, {
     maxResults: limit,
     sinceId: sinceId || undefined,
-    startTime,
+    ...(sinceId
+      ? {}
+      : { startTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }),
   })
 }
 

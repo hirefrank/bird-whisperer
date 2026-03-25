@@ -6,7 +6,7 @@
 
 ### When does it show up?
 
-- Only when 2 or more accounts in your follows tweeted about the same topic, event, or conversation in the last 24 hours
+- Only when 2 or more accounts in your follows have overlapping new tweets about the same topic, event, or conversation since the last digest (or in the last 24 hours on a first run)
 - If everyone's talking about unrelated things, it doesn't appear — no forced connections
 
 ### How does it detect shared topics?
