@@ -1,6 +1,6 @@
 # Bird Whisperer
 
-Daily X digest delivered to your inbox. Follow specific accounts, summarize what changed, and get one email per day. [Backstory &rarr;](https://www.franktakeaways.com/p/bird-whisperer-stay-in-the-loop-without)
+Daily X digest delivered to your inbox. Follow specific accounts, summarize what changed, and get one email per day. **Want it hosted?** [getbirdwhisperer.com](https://getbirdwhisperer.com/) runs Bird Whisperer for you — no setup required. [Backstory &rarr;](https://www.franktakeaways.com/p/bird-whisperer-stay-in-the-loop-without)
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/hirefrank/bird-whisperer)
 
