@@ -122,7 +122,7 @@ Cloudflare Worker (daily cron)
 - Per-follow summaries with inline `[N]` links to source tweets.
 - Optional **Trending Across Your Follows** aggregate block at the top of the digest.
 
-The aggregate block is generated only when at least 2 followed accounts have new tweets and the model finds meaningful shared topics. If no shared topics are found, the block is omitted.
+The aggregate block is generated only when at least 2 followed accounts have new tweets and the model finds meaningful shared topics. It now uses a two-step pass: structured topic selection first, then prose rendering. Each topic needs a concrete anchor tweet or event, and broad umbrella themes are skipped. If no shared topics are found, the block is omitted.
 
 ## Configuration
 
@@ -234,7 +234,7 @@ The default schedule in `wrangler.toml` is `0 13 * * *` (13:00 UTC). Adjust the 
 
 - Scheduled Workers have a 15-minute execution limit.
 - Per follow: ~1 X tweets call + 1 Gemini call (user ID cached in KV after first lookup).
-- Per user: up to 1 additional Gemini call for aggregate cross-follow insights (only when 2+ follows have new tweets).
+- Per user: up to 2 additional Gemini calls for aggregate cross-follow insights (one structured selection pass, plus one prose pass when topics are found).
 - Per recipient: 1 outbound email via configured provider.
 - Practical starting limit: ~5 users with ~5 follows each.
 

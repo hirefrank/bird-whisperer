@@ -139,7 +139,7 @@ scripts/
 ### Scaling & Performance
 - **15-minute timeout** for scheduled triggers on Cloudflare Workers
 - Each follow requires: 1 X API call (user tweets) + 1 Gemini API call (userId cached in KV after first lookup)
-- Each user may add: 1 extra Gemini API call for aggregate insights across follows
+- Each user may add: up to 2 extra Gemini API calls for aggregate insights across follows (one structured selection pass, plus one prose pass when topics are found)
 - Each user requires: 1 email send via configured provider (Resend or Cloudflare Email Service)
 - **Recommended:** Max ~5 users with ~5 follows each (25 total follows) to stay within timeout
 - Consider queue-based architecture with Durable Objects if scaling beyond this

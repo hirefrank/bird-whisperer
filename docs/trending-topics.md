@@ -11,7 +11,8 @@
 
 ### How does it detect shared topics?
 
-- After fetching all tweets from your follows, the Whisperer looks across all accounts at once and asks: "Are any of these people reacting to, discussing, or referencing the same thing?"
+- After fetching all tweets from your follows, the Whisperer first does a structured pass to identify candidate shared topics, then does a second prose pass to write the final section
+- A topic only makes it through if the model can name a concrete anchor tweet, event, launch, article, or conversation
 - Strong signals: multiple people quoting the same tweet, reacting to the same news, or replying to each other
 - It caps at 1-3 shared topics per digest — quality over quantity
 

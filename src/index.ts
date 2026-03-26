@@ -283,11 +283,135 @@ Rules:
 - Only mention handles that are clearly part of that exact topic.
 - If you are unsure whether two accounts are discussing the same underlying thing, leave it out.
 - 1-3 shared topics max. Quality over quantity.
-- Same style rules as individual summaries: plain, direct, no filler words.
-- Do NOT use [N] tweet references — this is a high-level cross-account view.
+- Return strict JSON only, with no markdown fences and no extra commentary, in this shape:
+  {
+    "topics": [
+      {
+        "title": "short specific headline",
+        "anchor": "specific tweet, event, launch, article, or conversation",
+        "handles": ["tobi", "dhh"],
+        "sharedSummary": "one factual sentence describing the overlap",
+        "contrast": "optional one factual sentence if their takes differ"
+      }
+    ]
+  }
+
+If there are no meaningful shared topics across accounts, return exactly:
+{"topics":[]}`
+
+  const aggregateRenderPrompt = `You are writing the "Trending Across Your Follows" section of a personalized digest.
+
+Context about the reader: {CONTEXT}
+
+Use only these structured topic candidates:
+{TOPICS_JSON}
+
+Write 1 short paragraph per topic.
+
+Rules:
+- Start each paragraph with **Topic Name**.
+- In the first sentence, explicitly name the anchor.
+- Mention only the handles listed for that topic.
+- Use the sharedSummary as the factual core.
+- If a contrast is present, include it briefly.
+- 1-2 sentences per topic.
+- Do not merge topics together.
+- Do not invent new handles, anchors, or claims.
+- Do NOT use [N] references.
 - Use flowing prose, not bullet points.
 
-If there are no meaningful shared topics across accounts, respond with exactly and only: NO_SHARED_TOPICS`
+If there are no topics, respond with exactly and only: NO_SHARED_TOPICS`
+
+  const structuredOutputSystemPrompt = 'You identify shared topics conservatively and return strict JSON only.'
+
+  function buildGroupedTweetsText(handleTweets: { username: string; tweets: NormalizedTweet[] }[]): string {
+    return handleTweets
+      .map((h) => {
+        const tweets = h.tweets
+          .map((t) => {
+            let line = `- ${t.text}`
+            if (t.quotedTweet?.text) {
+              const author = t.quotedTweet.author?.username ? `@${t.quotedTweet.author.username}` : 'unknown'
+              line += `\n  ↳ Quoted ${author}: "${t.quotedTweet.text}"`
+            }
+            return line
+          })
+          .join('\n')
+        return `@${h.username}:\n${tweets}`
+      })
+      .join('\n\n')
+  }
+
+  function extractJsonObject(text: string): string | null {
+    const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    const source = (fencedMatch ? fencedMatch[1] : text).trim()
+    const start = source.indexOf('{')
+    const end = source.lastIndexOf('}')
+
+    if (start === -1 || end === -1 || end <= start) {
+      return null
+    }
+
+    return source.slice(start, end + 1)
+  }
+
+  function normalizeAggregateTopics(
+    raw: unknown,
+    allowedHandles: Map<string, string>
+  ): Array<{ title: string; anchor: string; handles: string[]; sharedSummary: string; contrast?: string }> {
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { topics?: unknown }).topics)) {
+      return []
+    }
+
+    const seen = new Set<string>()
+    const topics: Array<{ title: string; anchor: string; handles: string[]; sharedSummary: string; contrast?: string }> = []
+
+    for (const item of (raw as { topics: unknown[] }).topics) {
+      if (!item || typeof item !== 'object') continue
+
+      const title = typeof (item as { title?: unknown }).title === 'string'
+        ? (item as { title: string }).title.trim()
+        : ''
+      const anchor = typeof (item as { anchor?: unknown }).anchor === 'string'
+        ? (item as { anchor: string }).anchor.trim()
+        : ''
+      const sharedSummary = typeof (item as { sharedSummary?: unknown }).sharedSummary === 'string'
+        ? (item as { sharedSummary: string }).sharedSummary.trim()
+        : ''
+      const contrast = typeof (item as { contrast?: unknown }).contrast === 'string'
+        ? (item as { contrast: string }).contrast.trim()
+        : undefined
+      const handles = Array.isArray((item as { handles?: unknown }).handles)
+        ? Array.from(
+            new Set(
+              (item as { handles: unknown[] }).handles
+                .filter((handle): handle is string => typeof handle === 'string')
+                .map((handle) => handle.trim().replace(/^@/, '').toLowerCase())
+                .map((handle) => allowedHandles.get(handle))
+                .filter((handle): handle is string => Boolean(handle))
+            )
+          )
+        : []
+
+      if (!title || !anchor || !sharedSummary || handles.length < 2) continue
+
+      const dedupeKey = `${title.toLowerCase()}|${anchor.toLowerCase()}`
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
+
+      topics.push({
+        title,
+        anchor,
+        handles,
+        sharedSummary,
+        ...(contrast ? { contrast } : {}),
+      })
+
+      if (topics.length === 3) break
+    }
+
+    return topics
+  }
 
   return {
     async summarize(tweets: NormalizedTweet[], context: string, twitterUsername: string): Promise<{ summary: string; links: string[]; tweetCount: number }> {
@@ -321,27 +445,45 @@ If there are no meaningful shared topics across accounts, respond with exactly a
     },
 
     async aggregateTopics(handleTweets: { username: string; tweets: NormalizedTweet[] }[], context: string): Promise<string> {
-      const groupedText = handleTweets
-        .map((h) => {
-          const tweets = h.tweets
-            .map((t) => {
-              let line = `- ${t.text}`
-              if (t.quotedTweet?.text) {
-                const author = t.quotedTweet.author?.username ? `@${t.quotedTweet.author.username}` : 'unknown'
-                line += `\n  ↳ Quoted ${author}: "${t.quotedTweet.text}"`
-              }
-              return line
-            })
-            .join('\n')
-          return `@${h.username}:\n${tweets}`
-        })
-        .join('\n\n')
+      const groupedText = buildGroupedTweetsText(handleTweets)
 
-      const { text } = await generateText({
+      const { text: selectionText } = await generateText({
         model: google(model),
         prompt: fillPromptTemplate(aggregatePrompt, {
           CONTEXT: context,
           GROUPED_TWEETS: groupedText,
+        }),
+        system: structuredOutputSystemPrompt,
+        abortSignal: AbortSignal.timeout(60_000),
+        providerOptions: {
+          google: lowVarianceGoogleOptions,
+        },
+      })
+
+      const rawJson = extractJsonObject(selectionText)
+      if (!rawJson) {
+        return ''
+      }
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(rawJson)
+      } catch {
+        return ''
+      }
+
+      const allowedHandles = new Map(handleTweets.map((handle) => [handle.username.toLowerCase(), handle.username]))
+      const topics = normalizeAggregateTopics(parsed, allowedHandles)
+
+      if (topics.length === 0) {
+        return ''
+      }
+
+      const { text } = await generateText({
+        model: google(model),
+        prompt: fillPromptTemplate(aggregateRenderPrompt, {
+          CONTEXT: context,
+          TOPICS_JSON: JSON.stringify({ topics }, null, 2),
         }),
         system: 'You write concise, natural-sounding newsletter summaries. You never pad content or use filler phrases. You sound like a person, not an AI.',
         abortSignal: AbortSignal.timeout(60_000),
