@@ -296,6 +296,11 @@ Rules:
     ]
   }
 
+Anchor rules:
+- The anchor must be a reader-facing noun phrase, not raw tweet shorthand.
+- Do not use URLs, domains, or phrases like "the @username tweet", "the post", or "the thread" unless absolutely necessary.
+- If the anchor is someone's announcement, phrase it naturally, like "Rousseau Kazi's Tinker announcement" or "the Shopify Tinker launch".
+
 If there are no meaningful shared topics across accounts, return exactly:
 {"topics":[]}`
 
@@ -311,6 +316,8 @@ Write 1 short paragraph per topic.
 Rules:
 - Start each paragraph with **Topic Name**.
 - In the first sentence, explicitly name the anchor.
+- Refer to the anchor in natural language, not as "the tweet" or "the post".
+- If the anchor comes from someone's announcement, write it as "Person's announcement of X" or "the X launch announced by Person".
 - Mention only the handles listed for that topic.
 - Use the sharedSummary as the factual core.
 - If a contrast is present, include it briefly.
